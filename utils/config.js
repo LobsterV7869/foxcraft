@@ -1,15 +1,3 @@
-const Database = require('better-sqlite3');
-const path = require('path');
-
-let db;
-try {
-  // Try locating the db file (it resides in the root directory)
-  const dbPath = path.resolve(__dirname, '..', 'azespace.db');
-  db = new Database(dbPath);
-} catch (error) {
-  console.error('Bot Config Error: Failed to open shared database.', error);
-}
-
 const DEFAULT_CONFIG = {
   overview: {
     prefix: '!',
@@ -94,19 +82,25 @@ const DEFAULT_CONFIG = {
   },
 };
 
+// Serverless instances are ephemeral, so keep only a per-instance cache here.
+// Durable guild configuration should use a hosted database when required.
+const guildConfigs = new Map();
+
 /**
- * Retrieves the current configuration for a specific guild from the shared SQLite store.
- * Falls back to default configurations if none exist.
+ * Retrieves the current configuration for a specific guild.
+ * Falls back to a fresh default configuration if none exists or the cache fails.
  */
 function getGuildConfig(guildId) {
-  if (!db || !guildId) return DEFAULT_CONFIG;
+  if (!guildId) return structuredClone(DEFAULT_CONFIG);
+
   try {
-    const row = db.prepare('SELECT config FROM guild_configs WHERE guild_id = ?').get(guildId);
-    if (!row) return DEFAULT_CONFIG;
-    return JSON.parse(row.config);
+    if (!guildConfigs.has(guildId)) {
+      guildConfigs.set(guildId, structuredClone(DEFAULT_CONFIG));
+    }
+    return guildConfigs.get(guildId);
   } catch (error) {
     console.error(`Failed to get guild config for ${guildId}:`, error);
-    return DEFAULT_CONFIG;
+    return structuredClone(DEFAULT_CONFIG);
   }
 }
 
