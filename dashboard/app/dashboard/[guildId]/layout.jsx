@@ -51,7 +51,7 @@ export default async function GuildDashboardLayout({ children, params }) {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-sm truncate text-gray-200">{guild?.name || 'AzeSpace'}</h2>
+            <h2 className="font-bold text-sm truncate text-gray-200">{guild?.name || 'FoxCraft'}</h2>
             <Link href="/dashboard" className="text-xs text-[#5865F2] hover:underline">
               ← Switch Server
             </Link>

@@ -1,123 +1,58 @@
-# ⚡ AzeSpace - Discord User-Installed App
+# FoxCraft Discord botu
 
-A modern **Discord User-Installed App** built with **Discord.js v14**, **Express**, and **discord-interactions**.
+FoxCraft — Azərbaycan Minecraft serveri.
+Dostlarınla oyna, yeni insanlarla tanış ol, əylən və öz macəranı qur!
 
-Unlike traditional bots that require server invites and gateway connections, **User-Installed Apps** (`integration_types: [1]`) are installed directly to your personal Discord account. Once installed, your commands work **everywhere you go**:
-* 🌐 **Any Discord Server** you belong to (even without bot permissions)
-* 💬 **Direct Messages (Bot DMs)**
-* 👥 **Private Group DMs**
+Layihə Discord.js v14 gateway botunu imzalanmış Express interactions endpoint-i ilə birlikdə işlədir. Gateway `!` prefix əmrləri, botun presence-i və server idarəetmə əməliyyatları üçün; webhook isə slash əmrlərinə cavab üçün istifadə olunur.
 
----
+## Əmrlər
 
-## 🚀 Key Features
-
-* ⚡ **Serverless / Webhook Architecture:** Zero gateway websocket connections. Powered by an Express HTTP server receiving signed interaction webhooks.
-* 🛡️ **Cryptographic Verification:** Every request is authenticated using Ed25519 signature checks via `discord-interactions` and your Discord `PUBLIC_KEY`.
-* ⏳ **Anti-Abuse Rate Limiting:** Built-in in-memory rate limiter (1 command per 3 seconds per user).
-* 🎯 **Strict Single-Response Execution:** Every command produces exactly one clean reply (no spam loops, no repeat buttons, no multi-message bursts).
-* 🎭 **Massive Arsenal of Commands:** Includes utility, fun, and troll commands!
-
----
-
-## 🎮 Command List
-
-### 🛠️ Core Utility & Fun Commands
-| Command | Options | Description |
+| Slash | Prefix | Təyinat |
 |---|---|---|
-| **`/8ball`** | `[question]` | Ask the magical 8-Ball any question. |
-| **`/roll`** | `[dice]` | Roll custom dice (e.g. `20`, `2d6`, `d100`). Defaults to 6. |
-| **`/quote`** | *None* | Get an inspiring or witty quote from public APIs. |
-| **`/fact`** | *None* | Learn a random fun or useless fact. |
-| **`/translate`** | `[text]` `[language]` | Quick language translation (e.g. Spanish, French, az, tr, de). |
-| **`/remindme`** | `[time]` `[note]` | DMs you a one-time reminder when the timer expires (e.g. `10m`, `2h`). |
-| **`/poll`** | `[question]` `[options]` | Creates a numbered reaction poll with up to 10 choices. |
-| **`/avatar`** | `[user]` | View high-res avatar (**Server context only**; blocked in DMs). |
+| `/foxcraft-info` | `!foxcraft-info` | Server məlumatları və üzv sayı |
+| `/ip` | `!ip` | `.env`-dəki IP və versiya |
+| `/rules` | `!rules` | FoxCraft qaydaları |
+| `/server` | `!server` | Minecraft server statusu |
+| `/status` | `!status` | Canlı server statusu və oyunçu sayı |
+| `/link` | `!link` | Minecraft hesabını Discord hesabına bağlayır |
+| `/whoami` | `!whoami` | Bağlı Minecraft istifadəçi adını göstərir |
+| `/ping` | `!ping` | Bot və Discord gecikməsi |
+| `/foxcraft` | — | Server sahibi/admin üçün rebrand |
 
-### 🤪 Troll & Entertainment Commands
-| Command | Options | Description |
-|---|---|---|
-| **`/spam`** | `[text]` `[count]` | Repeats plain text up to 100 times in one public response in the current DM or server channel. |
-| **`/mock`** | `[text]` | Converts text into sPoNgEbOb MoCkInG cAsE 🐔. |
-| **`/fakeban`** | `[user]` `[reason]` | Scares a friend with a dramatic moderation ban embed (revealed as a prank!). |
-| **`/reverse`** | `[text]` | Reverses text backwards (!txet desreveR). |
-| **`/rate`** | `[target]` | Rates anything from 0 to 100% with funny commentary. |
-| **`/iq`** | `[user]` | Measures "100% scientifically accurate" galaxy brain IQ. |
-| **`/ship`** | `[user1]` `[user2]` | Love and friendship compatibility meter with visual progress bar. |
-| **`/roast`** | `[user]` | Friendly, lighthearted roasts to tease your friends. |
-| **`/copypasta`** | *None* | Posts a classic harmless internet copypasta. |
-| **`/coinflip`** | *None* | Flips a coin (with a 1% chance to land on its edge!). |
-| **`/rps`** | `[choice]` | Play Rock, Paper, Scissors against the app. |
+`/foxcraft` kanallara və kateqoriyalara toxunmur. Server adını, mövcud logo mənbəyi varsa ikonu, bot ləqəbini, bot avatarını, presence-i və təhlükəsiz role adlarını yeniləyir. Əməliyyat xətaları yekun cavabda ayrıca göstərilir. `FOXCRAFT_DRY_RUN=true` dəyişiklikləri sınaq məqsədilə göstərir.
 
----
+## Quraşdırma və işə salma
 
-## 🛠️ Setup & Installation Guide
+Mövcud `.env` faylını saxlayın. Yeni açarlar:
 
-### 1. Discord Developer Portal Setup
-1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and select your application.
-2. In **General Information**:
-   * Copy the **APPLICATION ID** (this is your `CLIENT_ID`).
-   * Copy the **PUBLIC KEY** (this is your `PUBLIC_KEY`).
-3. In **Bot**:
-   * Copy your bot token (this is your `DISCORD_TOKEN`, used by `deploy-commands.js` to register commands).
-4. In **Installation**:
-   * Under **Installation Contexts**, make sure **User Install** is checked!
-   * Under **Default Install Settings**, select:
-     * Scopes: `applications.commands`
-
----
-
-### 2. Configure Environment Variables
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
-Fill in your `.env` credentials:
 ```env
-DISCORD_TOKEN=your_bot_token_here
-CLIENT_ID=your_application_client_id_here
-PUBLIC_KEY=your_application_public_key_here
-PORT=3000
+GUILD_ID=
+FOXCRAFT_SERVER_IP=
+FOXCRAFT_VERSION=
+FOXCRAFT_LOGO_URL=
+FOXCRAFT_LOGO_PATH=assets/foxcraft-logo.png
+OWNER_ID=
+FOXCRAFT_DRY_RUN=false
+FOXCRAFT_STATUS_CHANNEL_ID=
+FOXCRAFT_WHITELIST_CHANNEL_ID=
 ```
 
----
+IP və versiya boşdursa bot `Yaxında` göstərir. Logo üçün əvvəl `FOXCRAFT_LOGO_URL`, sonra `FOXCRAFT_LOGO_PATH` yoxlanılır; layihədə hazırda uyğun logo faylı yoxdur.
 
-### 3. Deploy Global Slash Commands
-Register the commands with `integration_types: [1]` and `contexts: [0, 1, 2]`:
+`FOXCRAFT_STATUS_CHANNEL_ID` verilərsə bot hər 5 dəqiqədən bir yalnız həmin kanalın adını canlı server statusu ilə yeniləyir. Dəyər boşdursa bu funksiya deaktivdir. Whitelist rejimi təsdiqlənmədiyi üçün `/whitelist` və `!whitelist` hazırda əlavə edilməyib; `FOXCRAFT_WHITELIST_CHANNEL_ID` gələcək staff sorğuları üçün boş saxlanılıb.
+
+Slash əmrlərini qeydiyyata almaq və köhnələri silmək üçün:
+
 ```bash
 npm run deploy
 ```
-*Note: Global commands appear instantly on Discord for user-installed apps.*
 
----
+Bu deploy `Routes.applicationCommands(CLIENT_ID)` üzərinə tam yeni siyahını yazır; Discord-da qalan köhnə qlobal slash əmrləri belə silinir. Botu `applications.commands` və `bot` scope-ları, `Guilds`, `Guild Messages`, `Message Content`, `Guild Members` intentləri ilə serverə dəvət edin.
 
-### 4. Start the Webhook Server & Expose HTTPS
-Start the Express server:
+İşə salma əmri dəyişməyib:
+
 ```bash
 npm start
 ```
-Discord requires an **HTTPS** URL for the interactions endpoint.
-If developing locally, expose port 3000 using Cloudflare Tunnel or ngrok:
-```bash
-ngrok http 3000
-# or
-cloudflared tunnel --url http://localhost:3000
-```
 
----
-
-### 5. Set Interactions Endpoint URL in Discord
-1. In Discord Developer Portal -> **General Information**.
-2. Set **Interactions Endpoint URL** to:
-   ```
-   https://<your-domain>/interactions
-   ```
-3. Click **Save Changes**. Discord will send a `PING` payload, which AzeSpace automatically validates and answers with `PONG`.
-
----
-
-### 6. Install to Your Profile ("Add to My Apps")
-Use the User-Install authorization link:
-```
-https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=applications.commands&integration_type=1
-```
-Click **Add to My Apps**. Now, type `/` in any server, DM, or group chat to use your commands!
+Botun rebrand üçün `Manage Guild`, `Manage Roles` və bot ləqəbi üçün uyğun nickname icazəsi olmalıdır. `PUBLIC_KEY` interactions endpoint-in doğrulanması üçün, `DISCORD_TOKEN` isə gateway və Discord API əməliyyatları üçün istifadə olunur.

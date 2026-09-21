@@ -12,7 +12,7 @@ function LoginContent() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#2c2f33]">
       <div className="bg-[#23272a] p-8 rounded-lg shadow-xl w-full max-w-md text-center">
-        <h1 className="text-3xl font-bold text-white mb-6">AzeSpace Admin</h1>
+        <h1 className="text-3xl font-bold text-white mb-6">FoxCraft idarəetməsi</h1>
         <p className="text-gray-400 mb-8">Manage your server settings with ease.</p>
         
         {error && (

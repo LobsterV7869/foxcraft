@@ -1,5 +1,5 @@
 /**
- * Deploy Global Slash Commands for Discord User-Installed App
+ * Deploy FoxCraft Global Slash Commands for a guild-installed bot
  * 
  * Configures each command with:
  *   - integration_types: [1] (ApplicationIntegrationType.UserInstall)
@@ -41,16 +41,10 @@ for (const file of commandFiles) {
     const command = require(filePath);
 
     if ('data' in command && 'execute' in command) {
-        // Explicitly attach user-install integration type and all three interaction contexts
-        // integration_types: [1] -> UserInstall (can be added to a user's account)
-        // contexts: [0, 1, 2]    -> Guilds, Bot DMs, and Group DMs
+        // The rebrand and prefix handler require a guild-installed bot.
         command.data
-            .setIntegrationTypes(ApplicationIntegrationType.UserInstall)
-            .setContexts(
-                InteractionContextType.Guild,
-                InteractionContextType.BotDM,
-                InteractionContextType.PrivateChannel
-            );
+            .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+            .setContexts(InteractionContextType.Guild);
 
         commands.push(command.data.toJSON());
         console.log(`  ✓ Loaded /${command.data.name}`);
@@ -63,15 +57,15 @@ const rest = new REST({ version: '10' }).setToken(token);
 
 (async () => {
     try {
-        console.log(`\n🚀 Deploying ${commands.length} global slash commands to Discord API...`);
+        console.log(`\n[FOXCRAFT] ${commands.length} yeni slash əmri qeydiyyata alınır...`);
 
         const data = await rest.put(
             Routes.applicationCommands(clientId),
             { body: commands }
         );
 
-        console.log(`✅ Successfully registered ${data.length} global commands as User-Installed (integration_types: [1], contexts: [0, 1, 2])!`);
-        console.log(`🎉 Users can now install your app to their profile and use commands everywhere!`);
+        console.log(`[FOXCRAFT] ${data.length} slash əmri qeydiyyata alındı.`);
+        console.log('[FOXCRAFT] PUT əməliyyatı köhnə qlobal əmrləri avtomatik sildi.');
     } catch (error) {
         console.error('❌ Failed to deploy commands:', error);
     }

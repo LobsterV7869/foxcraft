@@ -169,7 +169,7 @@ export default function ConfigSectionPage({ params }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-gray-800 space-y-4 md:space-y-0">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">{section} Settings</h1>
-          <p className="text-sm text-gray-400 mt-1">Configure {section} parameters for AzeSpace.</p>
+          <p className="text-sm text-gray-400 mt-1">{section} bölməsinin FoxCraft parametrlərini dəyiş.</p>
         </div>
         <button
           type="submit"
@@ -215,7 +215,7 @@ export default function ConfigSectionPage({ params }) {
           <Section title="Administrator Roles" description="Define role structures for command authorities.">
             <RoleSelect
               label="Administrator Roles"
-              description="Roles allowed to configure AzeSpace completely."
+              description="FoxCraft ayarlarını tam dəyişə bilən rollar."
               value={sectionData.adminRoles}
               roles={roles}
               onChange={(v) => updateField('adminRoles', v)}

@@ -25,7 +25,7 @@ export default async function DashboardPage() {
         <header className="flex justify-between items-center mb-12">
           <div>
             <h1 className="text-4xl font-extrabold tracking-tight">Select a Server</h1>
-            <p className="text-gray-400 mt-2">Choose a server you manage to configure AzeSpace</p>
+            <p className="text-gray-400 mt-2">İdarə etdiyin serveri seç və FoxCraft ayarlarını dəyiş</p>
           </div>
           <div className="flex items-center space-x-4 bg-[#23272a] px-4 py-2 rounded-lg">
             {user.avatar ? (

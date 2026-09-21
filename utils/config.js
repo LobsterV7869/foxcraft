@@ -1,7 +1,7 @@
 const DEFAULT_CONFIG = {
   overview: {
     prefix: '!',
-    language: 'en',
+    language: 'az',
     timezone: 'UTC',
   },
   setup: {
@@ -17,11 +17,11 @@ const DEFAULT_CONFIG = {
     security: true,
   },
   server: {
-    language: 'en',
+    language: 'az',
     welcome: {
       enabled: false,
       channel: '',
-      message: 'Welcome to the server, {user}!',
+      message: 'FoxCraft serverinə xoş gəlmisən, {user}!',
     },
     autoRole: {
       enabled: false,
@@ -45,7 +45,7 @@ const DEFAULT_CONFIG = {
     xpRate: 1.0,
     cooldown: 60,
     levelUpChannel: 'current',
-    levelUpMessage: 'GG {user}, you leveled up to level {level}!',
+    levelUpMessage: '{user}, {level} səviyyəsinə yüksəldin!',
     roles: [],
   },
   security: {
