@@ -43,7 +43,7 @@ module.exports = {
                 { name: '📛 Ləqəb', value: member.nickname || 'Yoxdur', inline: true },
                 { name: '🎨 Rollar', value: top10, inline: false },
                 { name: '🗳️ Rollar sayı', value: String(roles.length), inline: true },
-                { name: '🕹 Bostan əsaslı', value: member.premiumSinceTimestamp ? `<t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>` : 'Yoxdur', inline: true },
+                { name: '🚀 Nitro booster', value: member.premiumSinceTimestamp ? `<t:${Math.floor(member.premiumSinceTimestamp / 1000)}:R>` : 'Yoxdur', inline: true },
             ],
         };
         return publicReply(null, [embed]);

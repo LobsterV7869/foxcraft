@@ -30,6 +30,32 @@ function getOption(interaction, name) {
 }
 
 /**
+ * Reads a string option in a backend-agnostic way.
+ * The gateway gives us discord.js option resolvers, HTTP gives us raw JSON.
+ */
+function getStringOption(interaction, name) {
+    const raw = getOption(interaction, name);
+    if (raw === null || raw === undefined) return null;
+    return typeof raw === 'string' ? raw : String(raw);
+}
+
+/**
+ * Normalises an autocomplete interaction so command code can always call
+ * `ctx.options.getFocused()` and `ctx.respond(choices)`.
+ */
+function autocompleteContext(interaction) {
+    if (typeof interaction?.respond === 'function') return interaction;
+    const focused = interaction?.data?.options?.find((o) => o.focused)?.value || '';
+    return {
+        options: { getFocused: () => focused },
+        respond: (choices) => ({
+            type: InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+            data: { choices: (choices || []).slice(0, 25) },
+        }),
+    };
+}
+
+/**
  * Creates an interaction response that is visible to everyone in the channel.
  */
 function publicReply(content, embeds = null) {
@@ -54,6 +80,8 @@ function ephemeralReply(content, embeds = null) {
 module.exports = {
     getUser,
     getOption,
+    getStringOption,
+    autocompleteContext,
     publicReply,
     ephemeralReply
 };

@@ -15,7 +15,7 @@ function giveawayEmbed(g, status = 'active') {
         title: `🎉 ${g.prize}`,
         description: desc,
         color: 0xFF73FA,
-        footer: { text: `Her host: ${g.host_id ? `<@${g.host_id}>` : '—'}` },
+        footer: { text: `Həstad: ${g.host_id ? `<@${g.host_id}>` : '—'}` },
         timestamp: new Date().toISOString(),
     };
 }

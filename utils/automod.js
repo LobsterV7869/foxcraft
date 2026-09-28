@@ -6,6 +6,7 @@
 
 const { PermissionFlagsBits } = require('discord.js');
 const { getModules } = require('./db');
+const { deleteLater } = require('./foxcraft');
 
 const spamWindows = new Map();
 
@@ -93,7 +94,7 @@ async function handleMessage(message, client) {
     if (config.action === 'delete') {
         await message.delete().catch(() => {});
         await message.channel.send(`${emoji} ${tag}: ${reason}`)
-            .then((m) => setTimeout(() => m.delete().catch(() => {}), 5000))
+            .then((m) => deleteLater(m, 5000))
             .catch(() => {});
     } else if (config.action === 'warn') {
         try {
@@ -102,7 +103,7 @@ async function handleMessage(message, client) {
             /* DM closed */
         }
         await message.channel.send(`${emoji} ${tag}: ${reason}`)
-            .then((m) => setTimeout(() => m.delete().catch(() => {}), 8000))
+            .then((m) => deleteLater(m, 8000))
             .catch(() => {});
     } else if (config.action === 'timeout') {
         await message.member?.timeout(10 * 60 * 1000, reason).catch(() => {});

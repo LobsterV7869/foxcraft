@@ -90,6 +90,26 @@ async function discordRequest(method, endpoint, body) {
     return data;
 }
 
+/**
+ * Deletes a message/channel after a delay.
+ * `send()` can resolve with nothing (partials, swallowed errors), and a
+ * `undefined.delete()` inside a timer would crash the whole process — so every
+ * delayed delete goes through here.
+ */
+function deleteLater(target, delay = 5000) {
+    if (!target || typeof target.delete !== 'function') return null;
+    const timer = setTimeout(() => {
+        try {
+            const result = target.delete();
+            if (result && typeof result.catch === 'function') result.catch(() => {});
+        } catch {
+            /* already gone */
+        }
+    }, delay);
+    if (typeof timer.unref === 'function') timer.unref();
+    return timer;
+}
+
 function hasPermission(interaction, permission) {
     const permissions = BigInt(interaction.member?.permissions || '0');
     return (permissions & BigInt(permission)) === BigInt(permission);
@@ -147,6 +167,7 @@ module.exports = {
     RULES,
     envValue,
     foxcraftEmbed,
+    deleteLater,
     getServerValues,
     getLogoData,
     discordRequest,

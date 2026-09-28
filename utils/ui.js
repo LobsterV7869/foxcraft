@@ -265,23 +265,48 @@ async function handleHttpInteraction(payload, client) {
 
 // Small shared builders used by handlers --------------------------------------
 
+/**
+ * Safely turns a label into a single Discord emoji name.
+ * `String.slice(0, 1)` would cut multi-code-unit emoji in half (a lone
+ * surrogate), which Discord rejects with a 400 — so we take the leading emoji
+ * cluster instead: the first code point plus its variation selector if present.
+ */
+function emojiName(value) {
+    if (value == null) return null;
+    const points = Array.from(String(value).trim());
+    if (!points.length) return null;
+    const first = points[0];
+    const second = points[1];
+    return second === '\uFE0F' || second === '\u200D' ? first + second : first;
+}
+
+/** Returns { name } for a raw emoji, or null when there is none. */
+function emojiData(value) {
+    const name = emojiName(value);
+    return name ? { name } : null;
+}
+
 function button(id, label, style = 2, emoji) {
-    return { type: 2, custom_id: id, label, style, ...(emoji ? { emoji: { name: emoji } } : {}) };
+    const data = emojiData(emoji);
+    return { type: 2, custom_id: id, label: String(label).slice(0, 80), style, ...(data ? { emoji: data } : {}) };
 }
 
 function select(customId, placeholder, options, minValues = 1, maxValues = 1) {
     return {
         type: 3,
         custom_id: customId,
-        placeholder,
+        placeholder: String(placeholder).slice(0, 150),
         min_values: minValues,
         max_values: maxValues,
-        options: options.map((option) => ({
-            label: String(option.label).slice(0, 100),
-            value: String(option.value).slice(0, 100),
-            ...(option.description ? { description: String(option.description).slice(0, 100) } : {}),
-            ...(option.emoji ? { emoji: { name: option.emoji } } : {}),
-        })),
+        options: options.map((option) => {
+            const data = emojiData(option.emoji);
+            return {
+                label: String(option.label).slice(0, 100),
+                value: String(option.value).slice(0, 100),
+                ...(option.description ? { description: String(option.description).slice(0, 100) } : {}),
+                ...(data ? { emoji: data } : {}),
+            };
+        }),
     };
 }
 
@@ -300,4 +325,5 @@ module.exports = {
     button,
     select,
     rows,
+    emojiName,
 };

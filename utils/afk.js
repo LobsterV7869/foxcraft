@@ -5,6 +5,7 @@
  */
 
 const { getModules, getAfk } = require('./db');
+const { deleteLater } = require('./foxcraft');
 
 /**
  * Runs AFK checks for a message. Returns true when the message should not be
@@ -22,7 +23,7 @@ async function handleMessage(message) {
             const { clearAfk } = require('./db');
             clearAfk(message.guild.id, message.author.id);
             const notify = await message.reply(`${message.author} AFK-dan qayıtdı! 🎉`).catch(() => null);
-            if (notify) setTimeout(() => notify.delete().catch(() => {}), 5000);
+            deleteLater(notify, 5000);
             return false;
         }
     } catch {
@@ -41,7 +42,7 @@ async function handleMessage(message) {
     const part = afk.reason ? `Səbəb: *${afk.reason}*` : 'Səbəb göstərilməyib.';
     const mention = `<@${targetId}>`;
     await message.channel.send(`${mention} AFK-dır (${ago} dəqiqədir). ${part}`)
-        .then((m) => setTimeout(() => m.delete().catch(() => {}), 8000))
+        .then((m) => deleteLater(m, 8000))
         .catch(() => {});
     return false;
 }

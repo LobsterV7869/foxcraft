@@ -45,7 +45,7 @@ async function handleRegister(ctx) {
             await ctx.reply({ content: 'Təyin olunmuş rol serverdə tapılmadı.', ephemeral: true });
             return;
         }
-        if (member.roles.cache.has(role.id)) {
+        if (member.roles?.cache?.has?.(role.id)) {
             await ctx.reply({ content: 'Sən artıq qeydiyyatdan keçmisən. ✅', ephemeral: true });
             return;
         }

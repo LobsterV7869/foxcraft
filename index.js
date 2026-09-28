@@ -61,6 +61,7 @@ const {
     envValue,
     fetchMinecraftStatus,
     foxcraftEmbed,
+    deleteLater,
     formatMinecraftStatus,
     getServerValues,
 } = require('./utils/foxcraft');
@@ -82,6 +83,8 @@ const {
     InteractionResponseType,
     InteractionResponseFlags
 } = require('discord-interactions');
+
+const { autocompleteContext } = require('./utils/interaction');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -237,7 +240,12 @@ client.on('messageCreate', async (message) => {
     try {
         await command.prefixExecute(message, args);
     } catch (error) {
-        console.error(`[FOXCRAFT] !${name} əmri uğursuz oldu:`, error);
+        console.error(`[FOXCRAFT] !${name} əmri uğursuz oldu:`, {
+            message: error?.message || String(error),
+            code: error?.code ?? null,
+            status: error?.status ?? error?.httpStatus ?? null,
+            stack: error?.stack ?? null,
+        });
         await message.reply('Əmr icra edilərkən xəta baş verdi.').catch(() => {});
     }
 });
@@ -501,7 +509,7 @@ async function handleCounting(message) {
     if (!valid) {
         await message.delete().catch((error) => logMessageDeleteFailure('Sayma mesajı silinmədi', error));
         await message.channel.send('Növbəti düzgün rəqəm yazılmalıdır və eyni üzv ardıcıl yaza bilməz.')
-            .then((warning) => setTimeout(() => warning.delete().catch(() => {}), 4000))
+            .then((warning) => deleteLater(warning, 4000))
             .catch(() => {});
         return true;
     }
@@ -641,9 +649,12 @@ async function handleButton(interaction) {
             });
         }
         await interaction.channel.send({ content: 'Bu ticket 5 saniyə ərzində silinəcək.' });
-        setTimeout(() => interaction.channel.delete('FoxCraft ticket bağlandı').catch((error) => {
-            console.error('[FOXCRAFT LOG] Ticket silinmədi:', error.message);
-        }), 5000);
+        setTimeout(() => {
+            if (typeof interaction.channel?.delete !== 'function') return;
+            interaction.channel.delete('FoxCraft ticket bağlandı').catch((error) => {
+                console.error('[FOXCRAFT LOG] Ticket silinmədi:', error.message);
+            });
+        }, 5000).unref?.();
         return true;
     }
     if (interaction.customId === 'foxcraft:ticket-claim') {
@@ -662,6 +673,20 @@ client.on('interactionCreate', async (interaction) => {
         // Route registered buttons/selects/modals (panel, cekilis, qeydiyyat,
         // help category, restart, automod) through the shared UI dispatcher.
         if (await ui.handleGatewayInteraction(interaction, client)) return;
+
+        // Autocomplete must always be answered, even when the command has no
+        // suggestions — otherwise Discord shows "application did not respond".
+        if (interaction.isAutocomplete()) {
+            const command = commands.get(interaction.commandName);
+            if (command?.autocomplete) {
+                await command.autocomplete(interaction).catch((error) => {
+                    console.error('[FOXCRAFT] Avtomatik tamamlama xətası:', error.message);
+                });
+            } else if (!interaction.responded) {
+                await interaction.respond([]).catch(() => {});
+            }
+            return;
+        }
 
         if (interaction.isCommand()) {
             const command = commands.get(interaction.commandName);
@@ -845,7 +870,10 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
             await channel.send({ content: 'Bu ticket 5 saniyə ərzində silinəcək.' });
 
             // 3. Delete channel after delay
-            setTimeout(() => channel.delete('FoxCraft ticket bağlandı').catch(() => {}), 5000);
+            setTimeout(() => {
+                if (typeof channel?.delete !== 'function') return;
+                channel.delete('FoxCraft ticket bağlandı').catch(() => {});
+            }, 5000).unref?.();
 
             return res.json({
                 type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -1073,7 +1101,23 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
         return;
     }
 
-    // STEP B: Slash Command Interactions
+    // STEP B: Autocomplete (type 4) — must always be answered or Discord
+    // shows "application did not respond" in the command input.
+    if (interaction.type === InteractionType.APPLICATION_COMMAND_AUTOCOMPLETE) {
+        const command = commands.get(interaction.data?.name);
+        if (!command?.autocomplete) {
+            return res.json({ type: InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT, data: { choices: [] } });
+        }
+        try {
+            const response = await command.autocomplete(autocompleteContext(interaction));
+            return res.json(response);
+        } catch (error) {
+            console.error('[FOXCRAFT] Avtomatik tamamlama xətası:', error.message);
+            return res.json({ type: InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT, data: { choices: [] } });
+        }
+    }
+
+    // STEP C: Slash Command Interactions
     if (interaction.type === InteractionType.APPLICATION_COMMAND) {
         const { name } = interaction.data;
         const command = commands.get(name);

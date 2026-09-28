@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { ephemeralReply, getOption } = require('../utils/interaction');
 const { PermissionFlagsBits, can, logError } = require('../utils/moderation');
 const { logModAction } = require('../utils/modlog');
+const { deleteLater } = require('../utils/foxcraft');
 
 async function clearMessages(channel, count) {
     const messages = await channel.messages.fetch({ limit: Math.min(count, 100) });
@@ -47,7 +48,7 @@ module.exports = {
         } catch (error) {
             logError('!sil', error);
             const errorMsg = await message.channel.send('❌ Mesajlar silinə bilmədi.');
-            setTimeout(() => errorMsg.delete().catch(() => {}), 3000);
+            deleteLater(errorMsg, 3000);
         }
     },
 };

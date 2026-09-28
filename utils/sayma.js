@@ -1,11 +1,11 @@
 /**
  * Sayma (counting) system for channels configured via /sayma or the panel.
- * Users must count 1, 2, 3 ... in order; a wrong number resets the count and
- * the offending message is deleted. Unlike the legacy name-based counter in
- * index.js this one is SQLite-backed and toggleable.
+ * Users must count 1, 2, 3 ... in order and the same user cannot write twice
+ * in a row. A wrong number keeps the current count and deletes the message.
  */
 
 const { getModules, getGuildData, updateGuildData } = require('./db');
+const { deleteLater } = require('./foxcraft');
 
 const CHECK_EMOJI_NAME = 'foxcraft_check';
 
@@ -56,7 +56,7 @@ async function handleMessage(message) {
         await message.delete().catch(() => {});
         const warning = await message.channel.send('Növbəti düzgün rəqəm yazılmalıdır və eyni üzv ardıcıl yaza bilməz.')
             .catch(() => null);
-        if (warning) setTimeout(() => warning.delete().catch(() => {}), 4000);
+        deleteLater(warning, 4000);
         return true;
     }
 
@@ -70,7 +70,7 @@ async function handleMessage(message) {
 
 async function addCheckReaction(message) {
     try {
-        let emoji = message.guild.emojis.cache.find((e) => e.name === CHECK_EMOJI_NAME) || '✅';
+        let emoji = message.guild?.emojis?.cache?.find((e) => e.name === CHECK_EMOJI_NAME) || '✅';
         if (emoji === '✅') {
             const emojis = await message.guild.emojis.fetch();
             emoji = emojis.find((e) => e.name === CHECK_EMOJI_NAME) || '✅';
