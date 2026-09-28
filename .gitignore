@@ -17,6 +17,9 @@ database.db*
 *.sqlite
 *.sqlite3
 
+# Runtime state written by the bot
+data/
+
 # Logs
 logs
 *.log

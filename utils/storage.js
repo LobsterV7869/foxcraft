@@ -1,4 +1,74 @@
+const fs = require('fs');
+const path = require('path');
 const mongoose = require('mongoose');
+
+// In-memory cache for fast, zero-latency retrieval during high-frequency events
+const logChannelCache = new Map();
+
+// Local JSON fallback file path
+const DATA_DIR = path.join(__dirname, '..', 'data');
+const JSON_LOGS_PATH = path.join(DATA_DIR, 'guild-logs.json');
+
+// Initialize local JSON storage if needed
+function loadJsonCache() {
+    try {
+        if (!fs.existsSync(DATA_DIR)) {
+            fs.mkdirSync(DATA_DIR, { recursive: true });
+        }
+        if (fs.existsSync(JSON_LOGS_PATH)) {
+            const raw = fs.readFileSync(JSON_LOGS_PATH, 'utf8');
+            const data = JSON.parse(raw);
+            if (data && typeof data === 'object') {
+                for (const [guildId, channelId] of Object.entries(data)) {
+                    logChannelCache.set(guildId, String(channelId));
+                }
+            }
+        }
+    } catch (error) {
+        console.error('[STORAGE] Error loading local JSON log config:', error.message);
+    }
+}
+
+function saveJsonCache() {
+    try {
+        if (!fs.existsSync(DATA_DIR)) {
+            fs.mkdirSync(DATA_DIR, { recursive: true });
+        }
+        const obj = Object.fromEntries(logChannelCache.entries());
+        fs.writeFileSync(JSON_LOGS_PATH, JSON.stringify(obj, null, 2), 'utf8');
+    } catch (error) {
+        console.error('[STORAGE] Error saving local JSON log config:', error.message);
+    }
+}
+
+// SQLite helper (if better-sqlite3 and azespace.db exist)
+let sqliteDb = null;
+try {
+    const Database = require('better-sqlite3');
+    const sqlitePath = path.join(__dirname, '..', 'azespace.db');
+    sqliteDb = new Database(sqlitePath);
+    sqliteDb.exec(`
+        CREATE TABLE IF NOT EXISTS guild_log_channels (
+            guild_id TEXT PRIMARY KEY,
+            channel_id TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+    `);
+    // Pre-populate in-memory cache from SQLite
+    try {
+        const rows = sqliteDb.prepare('SELECT guild_id, channel_id FROM guild_log_channels').all();
+        for (const row of rows) {
+            logChannelCache.set(row.guild_id, row.channel_id);
+        }
+    } catch (e) {
+        // Ignore table read errors
+    }
+} catch (e) {
+    sqliteDb = null;
+}
+
+// Initial JSON cache load (after SQLite so both populate)
+loadJsonCache();
 
 // MongoDB Schema for Minecraft Links
 const MinecraftLinkSchema = new mongoose.Schema({
@@ -16,29 +86,151 @@ const GameStateSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-// Index to ensure unique state per guild/channel/game (like the PRIMARY KEY in SQLite)
 GameStateSchema.index({ guildId: 1, channelId: 1, game: 1 }, { unique: true });
 
-const MinecraftLink = mongoose.model('MinecraftLink', MinecraftLinkSchema);
-const GameState = mongoose.model('GameState', GameStateSchema);
+// MongoDB Schema for Guild Log Channel Configuration
+const GuildLogSchema = new mongoose.Schema({
+    guildId: { type: String, required: true, unique: true },
+    channelId: { type: String, required: true },
+    updatedAt: { type: Date, default: Date.now }
+});
+
+const MinecraftLink = mongoose.models.MinecraftLink || mongoose.model('MinecraftLink', MinecraftLinkSchema);
+const GameState = mongoose.models.GameState || mongoose.model('GameState', GameStateSchema);
+const GuildLog = mongoose.models.GuildLog || mongoose.model('GuildLog', GuildLogSchema);
 
 async function connectDB() {
     try {
         const uri = process.env.MONGO_URI;
         if (!uri) {
-            console.error('[STORAGE] MONGO_URI is missing in .env file!');
+            console.warn('[STORAGE] MONGO_URI is not set. Falling back to SQLite and JSON storage.');
             return;
         }
         await mongoose.connect(uri);
         console.log('[STORAGE] Successfully connected to MongoDB Atlas');
+
+        // Pre-load all GuildLog configs from MongoDB into in-memory cache
+        try {
+            const logs = await GuildLog.find({});
+            for (const log of logs) {
+                if (log.guildId && log.channelId) {
+                    logChannelCache.set(log.guildId, log.channelId);
+                }
+            }
+            console.log(`[STORAGE] Loaded ${logs.length} guild log configs from MongoDB.`);
+        } catch (err) {
+            console.error('[STORAGE] Error preloading guild log configs from MongoDB:', err.message);
+        }
     } catch (error) {
         console.error('[STORAGE] MongoDB connection error:', error.message);
     }
 }
 
-// Export connection function to be called in index.js
+async function setLogChannelId(guildId, channelId) {
+    if (!guildId) return;
+
+    // 1. Update In-Memory Cache immediately
+    if (channelId) {
+        logChannelCache.set(guildId, String(channelId));
+    } else {
+        logChannelCache.delete(guildId);
+    }
+
+    // 2. Persist to MongoDB (if connected)
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+        try {
+            if (channelId) {
+                await GuildLog.findOneAndUpdate(
+                    { guildId },
+                    { channelId: String(channelId), updatedAt: new Date() },
+                    { upsert: true, new: true }
+                );
+            } else {
+                await GuildLog.deleteOne({ guildId });
+            }
+        } catch (error) {
+            console.error('[STORAGE] MongoDB error saving log channel:', error.message);
+        }
+    }
+
+    // 3. Persist to SQLite (if available)
+    if (sqliteDb) {
+        try {
+            if (channelId) {
+                sqliteDb.prepare(`
+                    INSERT INTO guild_log_channels (guild_id, channel_id, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(guild_id) DO UPDATE SET channel_id = excluded.channel_id, updated_at = CURRENT_TIMESTAMP
+                `).run(guildId, String(channelId));
+
+                // Also keep dashboard guild_configs table in sync if it exists
+                try {
+                    const row = sqliteDb.prepare('SELECT config FROM guild_configs WHERE guild_id = ?').get(guildId);
+                    let config = {};
+                    if (row) {
+                        try { config = JSON.parse(row.config); } catch {}
+                    }
+                    if (!config.logs) config.logs = {};
+                    config.logs.eventLogs = { enabled: true, channel: String(channelId) };
+                    sqliteDb.prepare(`
+                        INSERT INTO guild_configs (guild_id, config, updated_at)
+                        VALUES (?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(guild_id) DO UPDATE SET config = excluded.config, updated_at = CURRENT_TIMESTAMP
+                    `).run(guildId, JSON.stringify(config));
+                } catch {}
+            } else {
+                sqliteDb.prepare('DELETE FROM guild_log_channels WHERE guild_id = ?').run(guildId);
+            }
+        } catch (error) {
+            console.error('[STORAGE] SQLite error saving log channel:', error.message);
+        }
+    }
+
+    // 4. Persist to JSON failsafe file
+    saveJsonCache();
+}
+
+async function getLogChannelId(guildId) {
+    if (!guildId) return null;
+
+    // 1. Check in-memory cache first
+    if (logChannelCache.has(guildId)) {
+        return logChannelCache.get(guildId);
+    }
+
+    // 2. Check MongoDB if connected
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+        try {
+            const doc = await GuildLog.findOne({ guildId });
+            if (doc && doc.channelId) {
+                logChannelCache.set(guildId, doc.channelId);
+                return doc.channelId;
+            }
+        } catch (error) {
+            console.error('[STORAGE] MongoDB error fetching log channel:', error.message);
+        }
+    }
+
+    // 3. Check SQLite if available
+    if (sqliteDb) {
+        try {
+            const row = sqliteDb.prepare('SELECT channel_id FROM guild_log_channels WHERE guild_id = ?').get(guildId);
+            if (row && row.channel_id) {
+                logChannelCache.set(guildId, row.channel_id);
+                return row.channel_id;
+            }
+        } catch (error) {
+            console.error('[STORAGE] SQLite error fetching log channel:', error.message);
+        }
+    }
+
+    return null;
+}
+
 module.exports = {
     connectDB,
+    getLogChannelId,
+    setLogChannelId,
     setMinecraftLink: async (discordUserId, minecraftUsername) => {
         try {
             await MinecraftLink.findOneAndUpdate(

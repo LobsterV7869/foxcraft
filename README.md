@@ -18,8 +18,58 @@ Layihə Discord.js v14 gateway botunu imzalanmış Express interactions endpoint
 | `/whoami` | `!whoami` | Bağlı Minecraft istifadəçi adını göstərir |
 | `/ping` | `!ping` | Bot və Discord gecikməsi |
 | `/foxcraft` | — | Server sahibi/admin üçün rebrand |
+| `/avatar` | `!avatar` | Üzvün/fənin avatarını göstərir |
+| `/userinfo` | `!userinfo` | Üzv haqqında ətraflı məlumat |
+| `/serverinfo` | `!serverinfo` | Server haqqında ətraflı məlumat |
+| `/qrkod` | `!qrkod` | Mətndən QR kod yaradır |
+| `/afk` | `!afk` | AFK (uzaqda) vəziyyətini aktivləşdirir |
+| `/ban` | `!ban` | Üzvü ban edir (mod-loqa yazır) |
+| `/kick` | `!kick` | Üzvü serverdən atır (mod-loqa yazır) |
+| `/mute` | `!mute` | Üzvü susdurur (müddət formatı: `1d`, `2h30m`) |
+| `/unmute` | `!unmute` | Susmanı ləğv edir |
+| `/unban` | `!unban` | Banı qaldırır |
+| `/sil` | `!sil` | Mesajları kütləvi silir (mod-loqa yazır) |
+| `/lock` | `!lock` | Kanalı kilidləyir |
+| `/unlock` | `!unlock` | Kanal kilidini açır |
+| `/slowmode` | `!slowmode` | Kanalda yavaş rejim təyin edir |
+| `/ticket-setup` | — | Ticket sistemi panelini qurur |
+| `/setlog` | `!setlog` | Mod-loq kanalını təyin edir |
+| `/logstatus` | `!logstatus` | Mod-loq kanalının vəziyyəti |
+| `/help` | `!help` | Kateqoriyalı yardım menyusu |
+| `/restart` | — | Botu yenidən başladır (yalnız sahib) |
+| `/panel` | `!panel` | Modulların idarəetmə paneli (yalnız sahib) |
+| `/automod` | `!automod` | Automod statusu + parametrlər |
+| `/sunucukur` | `!sunucukur` | Tam server qurulumu |
+| `/sayma` | `!sayma` | Sayma (rəqəm) sistemi kanalını qurur |
+| `/cekilis` | `!cekilis` | Çəkiliş başlat (`baslat`) / yenidən seç (`yeniden`) |
+| `/welcomer` | `!welcomer` | Xoş gəldin/çıxış sistemi kanalını qurur |
+| `/qeydiyyat` | `!qeydiyyat` | Qeydiyyat panelini quraşdırır |
+
+Prefix sütununda göstərilən bütün əmrlər həm slash, həm də `!` prefix formasında işləyir.
+
+## Panellər və sistemlər
+
+- **`/panel`** — modulları (Automod, Welcomer, Sayma, Çəkiliş, Ticket, Qeydiyyat, AFK, Mod-loq) SQLite bazasında saxlanan ayarlarla aktivləşdirir/söndürür, ayar modalarını açır. Yalnız `.env`-dəki `OWNER_ID` sahibi istifadə edə bilər.
+- **Automod** — link, dəvət, böyük hərf, spam/flood süzgəcləri, qadağan sözlər, istisna rollar/kanallar; hərəkət `delete`, `warn` və ya `timeout`.
+- **Welcomer** — `{user} {username} {server} {membercount}` yerləri, avto-rol, DM xoş gəldin mesajı, çıxış mesajı.
+- **Sayma** — təyin olunmuş kanalda ardıcıl sayma; səhv və ya təkrarlanan mesaj silinir.
+- **Çəkiliş** — `!cekilis baslat <mükafat> <müddət>` ilə işə düşür, düyməyə basanlar qatra bilir, vaxt bitəndə qaliblər seçilir; `/panel` vasitəsilə söndürülə bilər.
+- **Qeydiyyat** — serverə qeydiyyat paneli; düyməyə basan üzv seçilmiş rol alır.
+- **Dəyişiklik/müddət formatları** — müddətlər `1d`, `2h30m`, `45m` kimi birləşmələrdən ibarətdir (maksimum 28 gün).
 
 `/foxcraft` kanallara və kateqoriyalara toxunmur. Server adını, mövcud logo mənbəyi varsa ikonu, bot ləqəbini, bot avatarını, presence-i və təhlükəsiz role adlarını yeniləyir. Əməliyyat xətaları yekun cavabda ayrıca göstərilir. `FOXCRAFT_DRY_RUN=true` dəyişiklikləri sınaq məqsədilə göstərir.
+
+## Dashboard
+
+`BOT_API_TOKEN` ilə qorunan `/dashboard` səhifəsi botun görə bildiyi serverləri və kanalları sadalayır; seçilmiş kanala elan (mətn) və ya embed göndərə bilərsiniz.
+
+- Tokeni `.env`-də `BOT_API_TOKEN=` olaraq təyin edin (ixtiyari dəyər).
+- `http://localhost:PORT/dashboard` səhifəsini açın, tokeni daxil edin.
+- Serveri və kanalı seçin, tipi seçin (elan/embed), mətni yazın və "Göndər"ə basın.
+
+API (Bearer `BOT_API_TOKEN` ilə):
+- `GET /api/guilds` — serverlər və onların mətn kanalları.
+- `POST /api/guilds/:guildId/messages` — `{ type: "announce"|"embed", channelId, content|title|description|color|fields }`.
 
 ## Quraşdırma və işə salma
 
@@ -35,6 +85,7 @@ OWNER_ID=
 FOXCRAFT_DRY_RUN=false
 FOXCRAFT_STATUS_CHANNEL_ID=
 FOXCRAFT_WHITELIST_CHANNEL_ID=
+BOT_API_TOKEN=
 ```
 
 IP və versiya boşdursa bot `Yaxında` göstərir. Logo üçün əvvəl `FOXCRAFT_LOGO_URL`, sonra `FOXCRAFT_LOGO_PATH` yoxlanılır; layihədə hazırda uyğun logo faylı yoxdur.

@@ -6,11 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "deploy": "node deploy-commands.js",
-    "dashboard:dev": "npm run dev --prefix dashboard",
-    "dashboard:build": "npm run build --prefix dashboard",
-    "dashboard:start": "npm run start --prefix dashboard",
-    "dev": "concurrently \"npm run start\" \"npm run dashboard:dev\""
+    "deploy": "node deploy-commands.js"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

@@ -13,12 +13,20 @@ function getUser(interaction) {
 
 /**
  * Extracts an option value by name from the interaction options array.
+ * Also searches one level deep into subcommand options.
  */
 function getOption(interaction, name) {
     const options = interaction.data?.options;
     if (!options || !Array.isArray(options)) return null;
-    const opt = options.find((o) => o.name === name);
-    return opt ? opt.value : null;
+    const direct = options.find((o) => o.name === name);
+    if (direct) return direct.value;
+    for (const option of options) {
+        if (Array.isArray(option?.options)) {
+            const nested = option.options.find((o) => o.name === name);
+            if (nested) return nested.value;
+        }
+    }
+    return null;
 }
 
 /**

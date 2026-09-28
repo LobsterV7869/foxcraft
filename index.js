@@ -56,7 +56,7 @@ const {
     AuditLogEvent,
     StringSelectMenuBuilder,
 } = require('discord.js');
-const { getGuildConfig } = require('./utils/config');
+const { getGuildConfig, loadGuildConfig, setGuildConfig, configIsDurable } = require('./utils/config');
 const {
     envValue,
     fetchMinecraftStatus,
@@ -64,8 +64,17 @@ const {
     formatMinecraftStatus,
     getServerValues,
 } = require('./utils/foxcraft');
-const { getGameState, setGameState } = require('./utils/storage');
-const { connectDB } = require('./utils/storage');
+const { getGameState, setGameState, connectDB } = require('./utils/storage');
+const logger = require('./utils/logger');
+const systems = require('./utils/systems');
+const cekilis = require('./utils/cekilis');
+const qeydiyyat = require('./utils/qeydiyyat');
+const ui = require('./utils/ui');
+const automodCommand = require('./commands/automod');
+
+// Initialize database connection on startup (MongoDB Atlas, with automatic fallback to SQLite / JSON)
+connectDB();
+
 
 const {
     verifyKeyMiddleware,
@@ -136,6 +145,11 @@ if (fs.existsSync(commandsPath)) {
     console.warn('⚠️ No ./commands directory found.');
 }
 
+// Register button/select/modal handlers for the background systems.
+automodCommand.registerComponents();
+cekilis.registerComponents();
+qeydiyyat.registerComponents();
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -143,8 +157,15 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildModeration,
     ],
-    partials: [Partials.Channel],
+    partials: [
+        Partials.Channel,
+        Partials.Message,
+        Partials.GuildMember,
+        Partials.User,
+    ],
 });
 
 client.once('ready', () => {
@@ -246,7 +267,8 @@ client.on('guildMemberAdd', async (member) => {
             channel: '👋・lobi',
         });
     }
-    await auditLog(member.guild, 'Üzv qoşuldu', `${member.user.tag} serverə qoşuldu.`);
+    await logger.onGuildMemberAdd(member);
+    await systems.onMemberAdd(member);
 });
 
 client.on('messageCreate', async (message) => {
@@ -264,6 +286,11 @@ client.on('messageCreate', async (message) => {
     if (messageSnapshots.size > 5000) {
         messageSnapshots.delete(messageSnapshots.keys().next().value);
     }
+
+    // Background systems (automod, sayma on configured channels, AFK).
+    const consumedBySystems = await systems.handleMessage(message);
+    if (consumedBySystems) return;
+
     if (await handleCounting(message) || await handleWordGame(message)) return;
     await handleSuggestionReactions(message);
 
@@ -278,74 +305,45 @@ client.on('messageCreate', async (message) => {
 });
 
 client.on('messageDelete', async (message) => {
-    if (message.guild && !message.author?.bot) {
-        const snapshot = messageSnapshots.get(message.id);
-        const executor = await findDeleteExecutor(message.guild, message.id);
-        const deletedBy = executor ? executor.tag : 'Müəyyən edilmədi (mesaj müəllifi ola bilər)';
-        const createdAt = snapshot?.createdAt || message.createdAt;
-        await auditLog(
-            message.guild,
-            'Mesaj silindi',
-            [
-                `Müəllif: ${snapshot?.author || message.author?.tag || 'Naməlum'}`,
-                `Silən: ${deletedBy}`,
-                `Kanal: #${snapshot?.channelName || message.channel?.name || 'naməlum'}`,
-                `Vaxt: <t:${Math.floor(Date.now() / 1000)}:F>`,
-                `Mesaj tarixi: ${createdAt ? `<t:${Math.floor(new Date(createdAt).getTime() / 1000)}:F>` : 'Yaxında'}`,
-                `Məzmun: ${snapshot?.content || message.content || '[keşdə yoxdur]'}`,
-            ].join('\n'),
-        );
+    if (!message.guild) return;
+    await logger.onMessageDelete(message, messageSnapshots);
+    messageSnapshots.delete(message.id);
+});
+
+client.on('messageDeleteBulk', async (messages) => {
+    await logger.onMessageDeleteBulk(messages, messageSnapshots);
+    for (const message of messages.values()) {
         messageSnapshots.delete(message.id);
     }
 });
 
-client.on('messageDeleteBulk', async (messages) => {
-    const first = messages.first();
-    if (!first?.guild) return;
-    const executor = await findDeleteExecutor(first.guild, { channelId: first.channel.id }, true);
-    const samples = messages.map((message) => {
-        const snapshot = messageSnapshots.get(message.id);
-        return `${snapshot?.author || message.author?.tag || 'Naməlum'}: ${snapshot?.content || '[keşdə yoxdur]'}`;
-    }).slice(0, 10).join('\n');
-    await auditLog(first.guild, 'Mesajlar toplu silindi', [
-        `Say: ${messages.size}`,
-        `Silən: ${executor?.tag || 'Müəyyən edilmədi'}`,
-        `Kanal: #${first.channel.name}`,
-        `Vaxt: <t:${Math.floor(Date.now() / 1000)}:F>`,
-        `İlk mesajlar:\n${samples}`,
-    ].join('\n'), true);
-    for (const message of messages.values()) messageSnapshots.delete(message.id);
-});
-
 client.on('messageUpdate', async (oldMessage, newMessage) => {
-    if (newMessage.guild && !newMessage.author?.bot && oldMessage.content !== newMessage.content) {
-        await auditLog(newMessage.guild, 'Mesaj redaktə edildi', `${newMessage.author?.tag || 'Naməlum üzv'} tərəfindən ${newMessage.channel} kanalında mesaj redaktə edildi.`);
-    }
+    await logger.onMessageUpdate(oldMessage, newMessage);
 });
 
 client.on('guildMemberRemove', async (member) => {
-    await auditLog(member.guild, 'Üzv ayrıldı', `${member.user.tag} serverdən ayrıldı.`);
+    await logger.onGuildMemberRemove(member);
+    await systems.onMemberRemove(member);
 });
 
 client.on('guildBanAdd', async (ban) => {
-    await auditLog(ban.guild, 'Üzv banlandı', `${ban.user.tag} serverdə banlandı.`, true);
+    await logger.onGuildBanAdd(ban);
 });
 
 client.on('guildBanRemove', async (ban) => {
-    await auditLog(ban.guild, 'Ban götürüldü', `${ban.user.tag} üçün ban götürüldü.`);
+    await logger.onGuildBanRemove(ban);
 });
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
-    if (oldMember.nickname !== newMember.nickname) {
-        await auditLog(newMember.guild, 'Ləqəb dəyişdirildi', `${newMember.user.tag} ləqəbini dəyişdirdi.`);
-    }
-    if (oldMember.roles.cache.size !== newMember.roles.cache.size) {
-        await auditLog(newMember.guild, 'Üzv rolu dəyişdirildi', `${newMember.user.tag} rollarını dəyişdirdi.`);
-    }
+    await logger.onGuildMemberUpdate(oldMember, newMember);
 });
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
-    const trigger = newState.guild.channels.cache.find(
+    // 1. Dispatch voice log
+    await logger.onVoiceStateUpdate(oldState, newState);
+
+    // 2. Custom voice room management
+    const trigger = newState.guild?.channels.cache.find(
         (channel) => channel.name === '➕・Xüsusi otaq yarat' && channel.type === 2
     );
     if (trigger && newState.channelId === trigger.id && newState.member && !newState.member.user.bot) {
@@ -371,7 +369,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         }
     }
     if (oldState.channelId && oldState.channelId !== trigger?.id) {
-        const oldChannel = oldState.guild.channels.cache.get(oldState.channelId);
+        const oldChannel = oldState.guild?.channels.cache.get(oldState.channelId);
         if (oldChannel?.parent?.name === '🔒・Xüsusi otaqlar' && oldChannel.name.startsWith('🔒・') && oldChannel.members.size === 0) {
             await oldChannel.delete('FoxCraft xüsusi səs otağı boş qaldı').catch((error) => {
                 console.error('[FOXCRAFT LOG] Boş xüsusi səs otağı silinmədi:', error.message);
@@ -381,26 +379,39 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 });
 
 client.on('roleCreate', async (role) => {
-    await auditLog(role.guild, 'Rol yaradıldı', `${role.name} rolu yaradıldı.`);
+    await logger.onRoleCreate(role);
 });
 
 client.on('roleDelete', async (role) => {
-    await auditLog(role.guild, 'Rol silindi', `${role.name} rolu silindi.`, true);
+    await logger.onRoleDelete(role);
 });
 
 client.on('roleUpdate', async (oldRole, newRole) => {
-    if (oldRole.name !== newRole.name || oldRole.permissions.bitfield !== newRole.permissions.bitfield) {
-        await auditLog(newRole.guild, 'Rol dəyişdirildi', `${oldRole.name} rolu yeniləndi.`);
-    }
+    await logger.onRoleUpdate(oldRole, newRole);
 });
 
 client.on('channelCreate', async (channel) => {
-    if (channel.guild) await auditLog(channel.guild, 'Kanal yaradıldı', `${channel.name} kanalı yaradıldı.`);
+    await logger.onChannelCreate(channel);
 });
 
 client.on('channelDelete', async (channel) => {
-    if (channel.guild) await auditLog(channel.guild, 'Kanal silindi', `${channel.name} kanalı silindi.`, true);
+    await logger.onChannelDelete(channel);
 });
+
+client.on('channelUpdate', async (oldChannel, newChannel) => {
+    await logger.onChannelUpdate(oldChannel, newChannel);
+});
+
+client.on('guildUpdate', async (oldGuild, newGuild) => {
+    await logger.onGuildUpdate(oldGuild, newGuild);
+});
+
+if (!process.env.VERCEL) {
+    // Finish giveaways that have reached their end time (also recovers
+    // giveaways that were still running when the process restarted).
+    const giveawaySweep = setInterval(() => cekilis.sweep(client).catch(() => {}), 20_000);
+    giveawaySweep.unref();
+}
 
 if (process.env.DISCORD_TOKEN && !process.env.VERCEL) {
     client.login(process.env.DISCORD_TOKEN).catch((error) => {
@@ -417,9 +428,7 @@ const recentMessages = new Map();
 const messageSnapshots = new Map();
 
 async function getLogChannel(guild) {
-    const configuredId = envValue('FOXCRAFT_LOG_CHANNEL_ID');
-    if (configuredId) return guild.channels.cache.get(configuredId) || guild.channels.fetch(configuredId).catch(() => null);
-    return guild.channels.cache.find((channel) => channel.name === '🛡️・mod-loglar');
+    return logger.getLogChannel(guild);
 }
 
 async function auditLog(guild, title, description, critical = false) {
@@ -650,12 +659,25 @@ async function handleButton(interaction) {
 
 client.on('interactionCreate', async (interaction) => {
     try {
+        // Route registered buttons/selects/modals (panel, cekilis, qeydiyyat,
+        // help category, restart, automod) through the shared UI dispatcher.
+        if (await ui.handleGatewayInteraction(interaction, client)) return;
+
         if (interaction.isCommand()) {
             const command = commands.get(interaction.commandName);
             if (!command) return;
             interaction.guildConfig = getGuildConfig(interaction.guildId);
             interaction.discordClient = client;
-            await command.execute(interaction);
+            const res = await command.execute(interaction);
+            if (res && !interaction.replied && !interaction.deferred) {
+                const isEphemeral = (res.data?.flags & InteractionResponseFlags.EPHEMERAL) === InteractionResponseFlags.EPHEMERAL;
+                await interaction.reply({
+                    content: res.data?.content || undefined,
+                    embeds: res.data?.embeds || undefined,
+                    components: res.data?.components || undefined,
+                    ephemeral: isEphemeral,
+                }).catch(() => {});
+            }
             return;
         }
 
@@ -753,6 +775,23 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
     // Discord sends a PING interaction. You MUST respond with PONG.
     if (interaction.type === InteractionType.PING) {
         return res.json({ type: InteractionResponseType.PONG });
+    }
+
+    // Buttons / select menus / modals (panel, cekilis, qeydiyyat, help...) that
+    // are registered in the shared UI dispatcher. Unhandled customIds fall
+    // through to the legacy handlers below.
+    if (interaction.type === InteractionType.MESSAGE_COMPONENT ||
+        interaction.type === InteractionType.MODAL_SUBMIT) {
+        try {
+            const uiResponse = await ui.handleHttpInteraction(interaction, client);
+            if (uiResponse) return res.json(uiResponse);
+        } catch (error) {
+            console.error('[FOXCRAFT UI] HTTP interaksiya xətası:', error.message);
+            return res.json({
+                type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                data: { content: 'Əməliyyat zamanı xəta baş verdi.', flags: InteractionResponseFlags.EPHEMERAL },
+            });
+        }
     }
 
     // Component interactions are delivered here when an Interactions Endpoint
@@ -1120,12 +1159,69 @@ function tokensMatch(left, right) {
     return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-app.post('/api/guilds/:guildId/messages', async (req, res) => {
+// Settings for the dashboard. The dashboard keeps its own SQLite copy for
+// local development, but a serverless deploy has nowhere to write it, so it
+// reads and writes the authoritative copy here instead.
+function requireBotApiToken(req, res) {
     const authorization = req.get('Authorization') || '';
     if (!authorization.startsWith('Bearer ') ||
         !tokensMatch(authorization.slice(7), process.env.BOT_API_TOKEN)) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        res.status(401).json({ error: 'Unauthorized' });
+        return false;
     }
+    if (!/^\d{5,25}$/.test(req.params.guildId || '')) {
+        res.status(400).json({ error: 'Invalid server id' });
+        return false;
+    }
+    return true;
+}
+
+function requireTokenOnly(req, res) {
+    const authorization = req.get('Authorization') || '';
+    if (!authorization.startsWith('Bearer ') ||
+        !tokensMatch(authorization.slice(7), process.env.BOT_API_TOKEN)) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return false;
+    }
+    return true;
+}
+
+app.get('/api/guilds/:guildId/config', async (req, res) => {
+    if (!requireBotApiToken(req, res)) return;
+
+    try {
+        const config = await loadGuildConfig(req.params.guildId);
+        // "durable" tells the dashboard whether a save will outlive a restart,
+        // so it can warn instead of accepting a setting that quietly vanishes.
+        return res.status(200).json({ config, durable: configIsDurable() });
+    } catch (error) {
+        console.error('Failed to read guild config:', error);
+        return res.status(502).json({ error: 'Could not read the settings store' });
+    }
+});
+
+app.patch('/api/guilds/:guildId/config', async (req, res) => {
+    if (!requireBotApiToken(req, res)) return;
+
+    const patch = req.body;
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+        return res.status(400).json({ error: 'A settings object is required' });
+    }
+
+    try {
+        const config = await setGuildConfig(req.params.guildId, patch);
+        if (!config) {
+            return res.status(502).json({ error: 'Could not save the settings' });
+        }
+        return res.status(200).json({ config, durable: configIsDurable() });
+    } catch (error) {
+        console.error('Failed to save guild config:', error);
+        return res.status(502).json({ error: 'Could not save the settings' });
+    }
+});
+
+app.post('/api/guilds/:guildId/messages', async (req, res) => {
+    if (!requireBotApiToken(req, res)) return;
 
     const { channelId, type, content, title, description, color, fields, mentionEveryone } = req.body;
     if (!channelId || !['embed', 'announce'].includes(type)) {
@@ -1169,6 +1265,34 @@ app.post('/api/guilds/:guildId/messages', async (req, res) => {
         return res.status(502).json({ error: 'Discord request failed' });
     }
 });
+
+app.get('/api/guilds', async (req, res) => {
+    if (!requireTokenOnly(req, res)) return;
+
+    try {
+        const guilds = [];
+        for (const guild of client.guilds.cache.values()) {
+            const channels = await guild.channels.fetch().catch(() => new Map());
+            guilds.push({
+                id: guild.id,
+                name: guild.name,
+                icon: guild.iconURL({ size: 128 }),
+                channels: [...channels.values()]
+                    .filter((channel) => channel?.isTextBased())
+                    .map((channel) => ({ id: channel.id, name: channel.name, type: channel.type }))
+                    .sort((a, b) => a.name.localeCompare(b.name)),
+            });
+        }
+        guilds.sort((a, b) => a.name.localeCompare(b.name));
+        return res.status(200).json({ guilds });
+    } catch (error) {
+        console.error('Failed to load guilds for dashboard:', error);
+        return res.status(502).json({ error: 'Failed to load guilds' });
+    }
+});
+
+// Self-contained dashboard page (send messages to any channel the bot can see).
+app.use('/dashboard', express.static(path.join(__dirname, 'dashboard')));
 
 // ==============================================================================
 // 5. SERVER STARTUP

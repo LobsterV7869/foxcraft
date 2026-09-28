@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { ephemeralReply, getOption } = require('../utils/interaction');
 const { PermissionFlagsBits, can, logError } = require('../utils/moderation');
+const { logModAction } = require('../utils/modlog');
 
 async function clearMessages(channel, count) {
     const messages = await channel.messages.fetch({ limit: Math.min(count, 100) });
@@ -15,7 +16,12 @@ module.exports = {
     async execute(interaction) {
         if (!can(interaction.member, PermissionFlagsBits.ManageMessages)) return ephemeralReply('Bu əmrlə işləmək üçün Manage Messages icazəsi lazımdır.');
         try {
-            return ephemeralReply(`${await clearMessages(interaction.channel, getOption(interaction, 'say'))} mesaj silindi.`);
+            const count = getOption(interaction, 'say');
+            const deleted = await clearMessages(interaction.channel, count);
+            const guild = await interaction.discordClient.guilds.fetch(interaction.guild_id);
+            const actor = await guild.members.fetch(interaction.user?.id || interaction.member?.user?.id);
+            await logModAction(guild, 'sil', `${actor.user.tag} → #${interaction.channel?.name || interaction.channel_id}: ${deleted} mesaj silindi.`);
+            return ephemeralReply(`${deleted} mesaj silindi.`);
         } catch (error) {
             logError('/sil', error);
             return ephemeralReply('Mesajlar silinə bilmədi.');
@@ -27,8 +33,8 @@ module.exports = {
         if (!Number.isInteger(count) || count < 1 || count > 100) return message.reply('İstifadə: `!sil <1-100>`');
         try {
             const deleted = await clearMessages(message.channel, count);
+            await logModAction(message.guild, 'sil', `${message.author.tag} → #${message.channel.name}: ${deleted} mesaj silindi.`);
 
-            // Premium touch: Send a professional confirmation and auto-delete it after 3 seconds
             const confirmation = await message.channel.send(`✅ **${deleted}** mesaj uğurla silindi.`);
 
             setTimeout(async () => {

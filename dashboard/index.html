@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FoxCraft Dashboard</title>
+<style>
+  :root { --bg:#1e1f22; --panel:#2b2d31; --border:#3f4147; --text:#e6e6e6; --muted:#9a9c9f; --accent:#ff6b35; --ok:#57f287; --err:#ed4245; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:16px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:18px; margin:0; }
+  header .dot { width:10px; height:10px; border-radius:50%; background:var(--ok); }
+  main { max-width:900px; margin:24px auto; padding:0 16px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:20px; }
+  .card h2 { margin:0 0 12px; font-size:15px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:0 0 4px; }
+  input, select, textarea { background:#1e1f22; border:1px solid var(--border); color:var(--text); border-radius:6px; padding:8px 10px; font-size:14px; width:100%; }
+  textarea { min-height:90px; resize:vertical; }
+  button { background:var(--accent); border:none; color:#fff; padding:9px 16px; border-radius:6px; font-size:14px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button.ghost { background:transparent; border:1px solid var(--border); }
+  .field { flex:1; min-width:200px; }
+  .field.wide { flex-basis:100%; }
+  #status { padding:10px 14px; border-radius:6px; display:none; margin-bottom:16px; font-size:14px; }
+  #status.ok { display:block; background:rgba(87,242,135,.12); border:1px solid var(--ok); color:var(--ok); }
+  #status.err { display:block; background:rgba(237,66,69,.12); border:1px solid var(--err); color:var(--err); }
+  #fieldsWrap { display:none; }
+  .fieldRow { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .fieldRow input { flex:1; }
+  .hint { font-size:12px; color:var(--muted); margin-top:6px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot"></span>
+  <h1>FoxCraft Dashboard</h1>
+</header>
+<main>
+  <div class="card">
+    <h2>Giriş</h2>
+    <div class="row">
+      <div class="field">
+        <label for="token">BOT_API_TOKEN</label>
+        <input id="token" type="password" placeholder=".env-dəki BOT_API_TOKEN dəyəri"/>
+      </div>
+      <button onclick="saveToken()">Yadda saxla</button>
+    </div>
+  </div>
+
+  <div id="status"></div>
+
+  <div class="card" id="compose" style="display:none">
+    <h2>✉️ Mesaj göndər</h2>
+    <div class="row">
+      <div class="field">
+        <label for="guild">Server</label>
+        <select id="guild"></select>
+      </div>
+      <div class="field">
+        <label for="channel">Kanal</label>
+        <select id="channel"></select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="type">Tip</label>
+        <select id="type">
+          <option value="announce">📢 Elan (mətn)</option>
+          <option value="embed">🖼️ Embed</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row" id="announceWrap">
+      <div class="field wide">
+        <label for="content">Mesaj mətni</label>
+        <textarea id="content" placeholder="Göndəriləcək mesaj"></textarea>
+      </div>
+    </div>
+
+    <div id="fieldsWrap">
+      <div class="row">
+        <div class="field">
+          <label for="title">Başlıq</label>
+          <input id="title" placeholder="Embed başlığı"/>
+        </div>
+        <div class="field">
+          <label for="color">Rəng</label>
+          <input id="color" type="color" value="#ff6b35"/>
+        </div>
+      </div>
+      <div class="field wide">
+        <label for="description">Təsvir</label>
+        <textarea id="description" placeholder="Embed təsviri"></textarea>
+      </div>
+      <label>Əlavə sahələr (fields)</label>
+      <div id="fields"></div>
+      <button class="ghost" onclick="addField()">+ Sahə əlavə et</button>
+    </div>
+
+    <div class="row" style="margin-top:16px">
+      <button onclick="send()">🚀 Göndər</button>
+    </div>
+    <div class="hint">Mesajı seçdiyin serverin seçdiyin kanalına göndərir. Bot həmin kanalı görə bilməlidir.</div>
+  </div>
+
+  <div class="card" id="empty" style="display:none">
+    <h2>Heç bir server tapılmadı</h2>
+    <p class="hint">Botun işlədiyi serverlər burada görünəcək. Tokenin düzgün olduğundan əmin ol.</p>
+  </div>
+</main>
+
+<script>
+const API = (path) => `/api${path}`;
+let token = localStorage.getItem('foxcraft_dash_token') || '';
+let guilds = [];
+
+function showStatus(text, ok) {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = ok ? 'ok' : 'err';
+}
+
+function saveToken() {
+  token = document.getElementById('token').value.trim();
+  if (!token) { showStatus('Token daxil et.', false); return; }
+  localStorage.setItem('foxcraft_dash_token', token);
+  load();
+}
+
+async function api(path, options = {}) {
+  if (!token) throw new Error('Token daxil et.');
+  const res = await fetch(API(path), {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...(options.headers || {}),
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+async function load() {
+  try {
+    const data = await api('/guilds');
+    guilds = data.guilds || [];
+    if (!guilds.length) {
+      document.getElementById('compose').style.display = 'none';
+      document.getElementById('empty').style.display = '';
+      showStatus('Serverlər yükləndi, amma botun üzv olduğu server yoxdur.', true);
+      return;
+    }
+    document.getElementById('empty').style.display = 'none';
+    document.getElementById('compose').style.display = '';
+    populateGuilds();
+    showStatus('Serverlər uğurla yükləndi. ✅', true);
+  } catch (e) {
+    showStatus(e.message, false);
+  }
+}
+
+function populateGuilds() {
+  const sel = document.getElementById('guild');
+  sel.innerHTML = guilds.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+  sel.onchange = () => populateChannels();
+  populateChannels();
+}
+
+function populateChannels() {
+  const gid = document.getElementById('guild').value;
+  const guild = guilds.find(g => g.id === gid);
+  const sel = document.getElementById('channel');
+  if (!guild) { sel.innerHTML = '<option>Kanal yoxdur</option>'; return; }
+  sel.innerHTML = guild.channels.map(c => `<option value="${c.id}">#${c.name}</option>`).join('')
+    || '<option>Mətn kanalı yoxdur</option>';
+}
+
+function toggleFields() {
+  const type = document.getElementById('type').value;
+  document.getElementById('fieldsWrap').style.display = type === 'embed' ? '' : 'none';
+  document.getElementById('announceWrap').style.display = type === 'embed' ? 'none' : '';
+}
+
+function addField() {
+  const wrap = document.getElementById('fields');
+  const row = document.createElement('div');
+  row.className = 'fieldRow';
+  row.innerHTML = '<input class="fname" placeholder="Ad"/><input class="fvalue" placeholder="Dəyər"/><button class="ghost" onclick="this.parentElement.remove()">✕</button>';
+  wrap.appendChild(row);
+}
+
+async function send() {
+  const payload = { channelId: document.getElementById('channel').value };
+  const type = document.getElementById('type').value;
+  if (type === 'announce') {
+    payload.type = 'announce';
+    payload.content = document.getElementById('content').value;
+    payload.mentionEveryone = false;
+    if (!payload.content.trim()) { showStatus('Mesaj mətni boşdur.', false); return; }
+  } else {
+    payload.type = 'embed';
+    payload.title = document.getElementById('title').value || '✓';
+    payload.description = document.getElementById('description').value || '';
+    payload.color = parseInt(document.getElementById('color').value.slice(1), 16) || 0xFF6B35;
+    payload.fields = [...document.querySelectorAll('#fields .fieldRow')].map(r => ({
+      name: r.querySelector('.fname').value || ' ',
+      value: r.querySelector('.fvalue').value || ' ',
+      inline: false,
+    }));
+  }
+  try {
+    const gid = document.getElementById('guild').value;
+    const result = await api(`/guilds/${gid}/messages`, { method: 'POST', body: JSON.stringify(payload) });
+    showStatus(result.ok ? 'Mesaj göndərildi. ✅' : 'Mesaj göndərilmədi.', Boolean(result.ok));
+  } catch (e) {
+    showStatus(e.message, false);
+  }
+}
+
+document.getElementById('type').onchange = toggleFields;
+document.getElementById('guild').onchange = populateChannels;
+if (token) {
+  document.getElementById('token').value = token;
+  load();
+}
+</script>
+</body>
+</html>
