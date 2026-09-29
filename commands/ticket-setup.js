@@ -7,10 +7,12 @@ const {
 } = require('discord.js');
 const { envValue, foxcraftEmbed } = require('../utils/foxcraft');
 
+const { t } = require('../utils/lang');
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('ticket-setup')
-        .setDescription('Dəstək sisteminin panelini qurur')
+        .setDescription('Sets up the ticket system panel')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     async execute(interaction) {
@@ -46,7 +48,7 @@ module.exports = {
         const isAdmin = message.member.permissions.has(PermissionFlagsBits.Administrator) ||
                         (envValue('OWNER_ID') && envValue('OWNER_ID') === message.author.id);
 
-        if (!isAdmin) return message.reply('Bu əmri yalnız administratorlar istifadə edə bilər.');
+        if (!isAdmin) return message.reply(t(message.guild?.id, 'perm_admin_only'));
 
         const embed = {
             title: '🎫 FoxCraft Dəstək Sistemi',

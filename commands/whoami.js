@@ -12,7 +12,7 @@ function whoamiReply(userId) {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('whoami')
-        .setDescription('Əlaqələndirilmiş Minecraft istifadəçi adını göstərir'),
+        .setDescription('Shows your linked Minecraft username'),
     async execute(interaction) {
         return publicReply(whoamiReply(getUser(interaction).id));
     },

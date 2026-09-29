@@ -8,6 +8,7 @@
 const { getModules } = require('./db');
 const db = require('./db');
 const { registerComponent } = require('./ui');
+const { t } = require('./lang');
 
 const JOIN_PREFIX = 'foxcraft:cekilis-join';
 
@@ -33,15 +34,16 @@ async function announceWinners(giveaway, client) {
         const winners = pickWinners(giveaway.entrants, giveaway.winners, giveaway.winnersList || []);
         const newWinnerList = [...(giveaway.winnersList || []), ...winners];
         db.updateGiveaway(giveaway.message_id, { winnersList: newWinnerList, ended: 1 });
-        const mentions = winners.length ? winners.map((id) => `<@${id}>`).join(' ') : 'Qalib yoxdur';
+        const gid = channel.guild?.id;
+        const mentions = winners.length ? winners.map((id) => `<@${id}>`).join(' ') : t(gid, 'giveaway_no_winners');
         const embed = {
-            title: `🎉 ${giveaway.prize}`,
+            title: `${giveaway.prize}`,
             description: winners.length
-                ? `Həvəsləndirici an! **Qaliblər:** ${mentions}\nTəbriklər! 🎊`
-                : 'Heç kim qatılmadı, çəkiliş keçirilmədi.',
+                ? t(gid, 'giveaway_ended_desc', { winners: mentions })
+                : t(gid, 'giveaway_cancelled'),
             color: 0x57F287,
             timestamp: new Date().toISOString(),
-            footer: { text: `Çəkiliş sona çatdı • ${giveaway.entrants.length} iştirakçı` },
+            footer: { text: t(gid, 'giveaway_footer', { count: giveaway.entrants.length }) },
         };
         await channel.send({
             content: winners.length ? mentions : undefined,
@@ -49,7 +51,7 @@ async function announceWinners(giveaway, client) {
             allowedMentions: { users: winners },
         }).catch(() => {});
     } catch (error) {
-        console.error('[CEKILIS] Qalib elan edilmədi:', error.message);
+        console.error('[GIVEAWAY] Winners could not be announced:', error.message);
     }
 }
 
@@ -70,13 +72,13 @@ function registerComponents() {
         const messageId = ctx.customId.slice(JOIN_PREFIX.length + 1);
         const result = db.addGiveawayEntrant(messageId, ctx.user.id);
         if (result.reason === 'notfound') {
-            await ctx.reply({ content: 'Bu çəkiliş tapılmadı.', ephemeral: true });
+            await ctx.reply({ content: t(ctx.guildId, 'giveaway_not_found'), ephemeral: true });
         } else if (result.reason === 'ended') {
-            await ctx.reply({ content: 'Bu çəkiliş artıq sona çatıb.', ephemeral: true });
+            await ctx.reply({ content: t(ctx.guildId, 'giveaway_ended_already'), ephemeral: true });
         } else if (result.reason === 'duplicate') {
-            await ctx.reply({ content: 'Sən artıq bu çəkilişə qatılmısan.', ephemeral: true });
+            await ctx.reply({ content: t(ctx.guildId, 'giveaway_already'), ephemeral: true });
         } else {
-            await ctx.reply({ content: `🎉 Çəkilişə qatıldın! (${result.entrants} iştirakçı)`, ephemeral: true });
+            await ctx.reply({ content: t(ctx.guildId, 'giveaway_enter', { entrants: result.entrants }), ephemeral: true });
         }
     });
 }

@@ -28,16 +28,32 @@ Layihə Discord.js v14 gateway botunu imzalanmış Express interactions endpoint
 | `/mute` | `!mute` | Üzvü susdurur (müddət formatı: `1d`, `2h30m`) |
 | `/unmute` | `!unmute` | Susmanı ləğv edir |
 | `/unban` | `!unban` | Banı qaldırır |
-| `/sil` | `!sil` | Mesajları kütləvi silir (mod-loqa yazır) |
+| `/sil` (`/clear`) | `!sil`, `!clear`, `!purge` | Mesajları kütləvi silir (mod-loqa yazır) |
 | `/lock` | `!lock` | Kanalı kilidləyir |
 | `/unlock` | `!unlock` | Kanal kilidini açır |
 | `/slowmode` | `!slowmode` | Kanalda yavaş rejim təyin edir |
+| `/warn` | `!warn` | Üzvü xəbərdar edir; 3 xəbərdarlıqdan sonra avtomatik susdurma |
+| `/warnings` | `!warnings` | Üzvün xəbərdarlıqlarını göstərir |
+| `/removewarn` | `!removewarn` | Bir xəbərdarlığı (və ya hamısını) silir |
+| `/timeout` | `!timeout` | Üzvü müvəqqəti susdurur (maksimum 28 gün) |
+| `/untimeout` | `!untimeout` | Timeout-u ləğv edir |
+| `/softban` | `!softban` | Kick + ban + unban (avatar/ləqəb yenilənir); `--keep` banı saxlayır |
+| `/move` | `!move` | Üzvü başqa səs kanalına məcbur köçürür |
 | `/ticket-setup` | — | Ticket sistemi panelini qurur |
 | `/setlog` | `!setlog` | Mod-loq kanalını təyin edir |
 | `/logstatus` | `!logstatus` | Mod-loq kanalının vəziyyəti |
 | `/help` | `!help` | Kateqoriyalı yardım menyusu |
 | `/restart` | — | Botu yenidən başladır (yalnız sahib) |
-| `/panel` | `!panel` | Modulların idarəetmə paneli (yalnız sahib) |
+| `/panel` | `!panel`, `!dashboard` | Modulların idarəetmə paneli (yalnız sahib) |
+| `/play` | `!play` | YouTube mahnısı səs kanalında oxunur (`!play <ad və ya link>`) |
+| `/join` | `!join` | Səs kanalına qoşulur (oxutmadan) |
+| `/skip` | `!skip` | Cari mahnını keçir |
+| `/stop` | `!stop`, `!leave` | Oxutmanı dayandırır, növbəni təmizləyir, kanaldan çıxır |
+| `/queue` | `!queue` | Növbəni göstərir |
+| `/nowplaying` | `!nowplaying` | Cari mahnını göstərir |
+| `/volume` | `!volume` | Səs səviyyəsini dəyişir (0-100) |
+| `/loop` | `!loop` | Təkrarlama rejimi: `off`, `track`, `queue` |
+| `/replay` | `!replay` | Cari mahnını yenidən başlatır |
 | `/automod` | `!automod` | Automod statusu + parametrlər |
 | `/sunucukur` | `!sunucukur` | Tam server qurulumu |
 | `/sayma` | `!sayma` | Sayma (rəqəm) sistemi kanalını qurur |
@@ -70,6 +86,23 @@ Prefix sütununda göstərilən bütün əmrlər həm slash, həm də `!` prefix
 API (Bearer `BOT_API_TOKEN` ilə):
 - `GET /api/guilds` — serverlər və onların mətn kanalları.
 - `POST /api/guilds/:guildId/messages` — `{ type: "announce"|"embed", channelId, content|title|description|color|fields }`.
+
+## Səs musiqisi (YouTube)
+
+`/play` YouTube-dan audio çəkir. Bunun üçün **host-da FFmpeg binarysi olmalıdır** — musiqi `@distube/ytdl-core` vasitəsilə FFmpeg-lə transkodlanır. Opus kodlayıcısı `npm install` zamanı `scripts/ensure-opus.js` ilə qurulur, FFmpeg isə sistem paketidir:
+
+```bash
+# Debian/Ubuntu
+apt-get install -y ffmpeg
+# Alpine
+apk add ffmpeg
+# macOS
+brew install ffmpeg
+```
+
+`/play` botu səsləndiricinin qoşulduğu səs kanalına qoşulur, ona görə də əvvəlcə kanala qoşulun. Spotify oxunmur — Spotify API artıq audio axını vermir; yalnız YouTube dəstəklənir.
+
+Növbə 100 mahnı ilə məhduddur, boş 5 dəqiqə sonra bot avtomatik kanaldan çıxır. Səs kanalında həm də `Connect` və `Speak` icazəsi lazımdır.
 
 ## Quraşdırma və işə salma
 

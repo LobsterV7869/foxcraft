@@ -29,11 +29,11 @@ function teardown(guildId) {
 async function handleRegister(ctx) {
     const config = getModules(ctx.guildId).qeydiyyat;
     if (!config || config.enabled !== true) {
-        await ctx.reply({ content: 'Qeydiyyat sistemi hazırda deaktivdir.', ephemeral: true });
+        await ctx.reply({ content: 'The registration system is currently disabled.', ephemeral: true });
         return;
     }
     if (!config.role) {
-        await ctx.reply({ content: 'Qeydiyyat rolu qurulmayıb. `/qeydiyyat` ilə rol təyin et.', ephemeral: true });
+        await ctx.reply({ content: 'The registration role is not set. Use `/register` to set a role.', ephemeral: true });
         return;
     }
     try {
@@ -42,18 +42,18 @@ async function handleRegister(ctx) {
         let role = guild.roles.cache.get(config.role);
         if (!role) role = await guild.roles.fetch(config.role).catch(() => null);
         if (!role || role.id !== config.role) {
-            await ctx.reply({ content: 'Təyin olunmuş rol serverdə tapılmadı.', ephemeral: true });
+            await ctx.reply({ content: 'The configured role was not found in the server.', ephemeral: true });
             return;
         }
         if (member.roles?.cache?.has?.(role.id)) {
-            await ctx.reply({ content: 'Sən artıq qeydiyyatdan keçmisən. ✅', ephemeral: true });
+            await ctx.reply({ content: 'You have already registered.', ephemeral: true });
             return;
         }
-        await member.roles.add(role, 'Qeydiyyat sistemi');
-        await ctx.reply({ content: 'Qeydiyyatdan keçdin — rolun verildi! 🎉', ephemeral: true });
+        await member.roles.add(role, 'Registration system');
+        await ctx.reply({ content: 'Registration complete - your role has been granted.', ephemeral: true });
     } catch (error) {
-        console.error('[QEYDIYYAT] Qeydiyyat xətası:', error.message);
-        await ctx.reply({ content: 'Qeydiyyat həyata keçirilmədi. Daha sonra yenidən cəhd et.', ephemeral: true });
+        console.error('[REGISTER] Registration error:', error.message);
+        await ctx.reply({ content: 'Registration failed. Please try again later.', ephemeral: true });
     }
 }
 

@@ -3,6 +3,8 @@ const { ephemeralReply, getOption } = require('../utils/interaction');
 const { updateGuildData, getModules } = require('../utils/db');
 const { can } = require('../utils/moderation');
 
+const { t } = require('../utils/lang');
+
 function modify(guildId, fn) {
     const modules = getModules(guildId);
     fn(modules.sayma = modules.sayma || {});
@@ -13,48 +15,48 @@ function modify(guildId, fn) {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('sayma')
-        .setDescription('Sayma (rəqəm) sistemi kanalını qurur')
+        .setDescription('Sets up the counting channel')
         .addSubcommand((sub) => sub
             .setName('kanal')
-            .setDescription('Sayma kanalını təyin et və sistemi aktivləşdir')
+            .setDescription('Set the counting channel and enable the system')
             .addChannelOption((option) => option.setName('kanal')
                 .addChannelTypes(ChannelType.GuildText)
-                .setDescription('Sayma keçiriləcək kanal')
+                .setDescription('Counting channel')
                 .setRequired(true)))
         .addSubcommand((sub) => sub
             .setName('sondur')
-            .setDescription('Sayma sistemini söndürür')),
+            .setDescription('Disables the counting system')),
     async execute(interaction) {
         const permission = PermissionFlagsBits.ManageChannels;
-        if (!can(interaction.member, permission)) return ephemeralReply('Bu əmrlə işləmək üçün Manage Channels icazəsi lazımdır.');
+        if (!can(interaction.member, permission)) return ephemeralReply(t(interaction.guild_id, 'perm_manage_channels'));
         const sub = interaction.data?.options?.[0]?.name || interaction.options?.getSubcommand?.();
         if (sub === 'kanal') {
             const channelId = getOption(interaction, 'kanal') || interaction.options?.get('kanal')?.value;
-            if (!channelId) return ephemeralReply('Kanal seçilmədi.');
+            if (!channelId) return ephemeralReply(t(interaction.guild_id, 'counting_no_channel'));
             modify(interaction.guild_id, (cfg) => {
                 cfg.enabled = true;
                 cfg.channel = String(channelId);
             });
-            return ephemeralReply(`🔢 Sayma sistemi aktivləşdirildi, kanal: <#${channelId}>\n1-dən başlayaraq ardıcıl sayın; səhv yazan mesaj silinər.`);
+            return ephemeralReply(t(interaction.guild_id, 'counting_announce', { channel: `<#${channelId}>` }));
         }
         modify(interaction.guild_id, (cfg) => {
             cfg.enabled = false;
         });
-        return ephemeralReply('🔢 Sayma sistemi söndürüldü.');
+        return ephemeralReply(t(interaction.guild_id, 'counting_disabled'));
     },
     async prefixExecute(message, args) {
-        if (!can(message.member, PermissionFlagsBits.ManageChannels)) return message.reply('Bu əmrlə işləmək üçün Manage Channels icazəsi lazımdır.');
+        if (!can(message.member, PermissionFlagsBits.ManageChannels)) return message.reply(t(message.guild?.id, 'perm_manage_channels'));
         const sub = args[0]?.toLowerCase();
         if (sub === 'sondur') {
             modify(message.guild.id, (cfg) => { cfg.enabled = false; });
-            return message.reply('🔢 Sayma sistemi söndürüldü.');
+            return message.reply(t(message.guild?.id, 'counting_disabled'));
         }
         const channel = message.mentions.channels.first() || message.guild.channels.cache.get(args[0]?.replace(/[<#>]/g, ''));
-        if (!channel?.isTextBased()) return message.reply('İstifadə: `!sayma qur #kanal` və ya `!sayma söndür`');
+        if (!channel?.isTextBased()) return message.reply(t(message.guild?.id, 'usage_counting'));
         modify(message.guild.id, (cfg) => {
             cfg.enabled = true;
             cfg.channel = channel.id;
         });
-        return message.reply(`🔢 Sayma sistemi aktivləşdirildi, kanal: ${channel}`);
+        return message.reply(t(message.guild?.id, 'counting_enabled', { channel: `${channel}` }));
     },
 };

@@ -4,10 +4,12 @@ const { can, canActOn, getTarget, logError } = require('../utils/moderation');
 const { parseDuration, formatDuration } = require('../utils/duration');
 const { logModAction } = require('../utils/modlog');
 
+const { t } = require('../utils/lang');
+
 async function muteTarget(actor, target, durationMs, reason) {
-    if (!canActOn(actor, target)) return 'Bu üzvü idarə edə bilməzsən: rol iyerarxiyasını yoxla.';
+    if (!canActOn(actor, target)) return 'You cannot manage this member: check the role hierarchy.';
     if (target.communicationDisabledUntil && target.communicationDisabledUntil > Date.now()) {
-        return `${target.user.tag} artıq susdurulub.`;
+        return `${target.user.tag} is already muted.`;
     }
     await target.timeout(durationMs, reason);
     return null;
@@ -16,43 +18,43 @@ async function muteTarget(actor, target, durationMs, reason) {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('mute')
-        .setDescription('Üzvü müəyyən müddətə susdurur')
-        .addUserOption((option) => option.setName('user').setDescription('Hədəf üzv').setRequired(true))
-        .addStringOption((option) => option.setName('duration').setDescription('Müddət, məs: 1h30m (10m maks 28g)').setRequired(true))
-        .addStringOption((option) => option.setName('reason').setDescription('Səbəb').setRequired(false)),
+        .setDescription('Times a member out so they cannot send messages')
+        .addUserOption((option) => option.setName('user').setDescription('Target member').setRequired(true))
+        .addStringOption((option) => option.setName('duration').setDescription('Duration, e.g. 1h30m (10m max 28d)').setRequired(true))
+        .addStringOption((option) => option.setName('reason').setDescription('Reason').setRequired(false)),
     async execute(interaction) {
-        if (!can(interaction.member, PermissionFlagsBits.ModerateMembers)) return ephemeralReply('Bu əmrlə işləmək üçün lazımi icazə yoxdur.');
-        const durationMs = parseDuration(getOption(interaction, 'müddət'));
-        if (!durationMs) return ephemeralReply('Düzgün müddət yaz: `1s`, `1m`, `1h`, `1d`, `1w` və ya kombinasiya (`1h30m`). Maksimum 28 gün.');
+        if (!can(interaction.member, PermissionFlagsBits.ModerateMembers)) return ephemeralReply(t(interaction.guild_id, 'no_permission'));
+        const durationMs = parseDuration(getOption(interaction, 'duration') || getOption(interaction, 'müddət'));
+        if (!durationMs) return ephemeralReply(t(interaction.guild_id, 'mute_bad_duration'));
         try {
             const guild = await interaction.discordClient.guilds.fetch(interaction.guild_id);
             const actor = await guild.members.fetch(interaction.user?.id || interaction.member?.user?.id);
             const target = await getTarget(guild, getOption(interaction, 'user'));
-            const reason = getOption(interaction, 'reason') || 'Səbəb göstərilməyib.';
+            const reason = getOption(interaction, 'reason') || t(interaction.guild_id, 'mod_no_reason');
             const blocked = await muteTarget(actor, target, durationMs, reason);
             if (blocked) return ephemeralReply(blocked);
-            await logModAction(guild, 'mute', `${actor.user.tag} → ${target.user.tag}\nMüddət: ${formatDuration(durationMs)}\nSəbəb: ${reason}`);
-            return ephemeralReply(`${target.user.tag} ${formatDuration(durationMs)} müddətinə susduruldu.`);
+            await logModAction(guild, 'mute', `${actor.user.tag} -> ${target.user.tag}\nDuration: ${formatDuration(durationMs)}\nReason: ${reason}`);
+            return ephemeralReply(t(interaction.guild_id, 'user_muted', { user: (target.user.tag), duration: (formatDuration(durationMs)) }));
         } catch (error) {
             logError('/mute', error);
-            return ephemeralReply('Mute əməliyyatı həyata keçirilmədi.');
+            return ephemeralReply(t(interaction.guild_id, 'mute_failed'));
         }
     },
     async prefixExecute(message, args) {
-        if (!can(message.member, PermissionFlagsBits.ModerateMembers)) return message.reply('Bu əmrlə işləmək üçün lazımi icazə yoxdur.');
+        if (!can(message.member, PermissionFlagsBits.ModerateMembers)) return message.reply(t(message.guild?.id, 'no_permission'));
         const targetId = args[0]?.replace(/[<@!>]/g, '');
         const durationMs = parseDuration(args[1]);
-        if (!targetId || !durationMs) return message.reply('İstifadə: `!mute @üzv <müddət> [səbəb]` (müddət: 1h30m)');
-        const reason = args.slice(2).join(' ') || 'Səbəb göstərilməyib.';
+        if (!targetId || !durationMs) return message.reply(t(message.guild?.id, 'usage_mute'));
+        const reason = args.slice(2).join(' ') || t(message.guild?.id, 'mod_no_reason');
         try {
             const target = await getTarget(message.guild, targetId);
             const blocked = await muteTarget(message.member, target, durationMs, reason);
             if (blocked) return message.reply(blocked);
-            await logModAction(message.guild, 'mute', `${message.author.tag} → ${target.user.tag}\nMüddət: ${formatDuration(durationMs)}\nSəbəb: ${reason}`);
-            return message.reply(`${target.user.tag} ${formatDuration(durationMs)} müddətinə susduruldu.`);
+            await logModAction(message.guild, 'mute', `${message.author.tag} -> ${target.user.tag}\nDuration: ${formatDuration(durationMs)}\nReason: ${reason}`);
+            return message.reply(t(message.guild?.id, 'user_muted', { user: (target.user.tag), duration: (formatDuration(durationMs)) }));
         } catch (error) {
             logError('!mute', error);
-            return message.reply('Mute əməliyyatı həyata keçirilmədi.');
+            return message.reply(t(message.guild?.id, 'mute_failed'));
         }
     },
 };

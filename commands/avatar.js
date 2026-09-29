@@ -2,6 +2,8 @@ const { SlashCommandBuilder } = require('discord.js');
 const { publicReply, ephemeralReply, getOption } = require('../utils/interaction');
 const { foxcraftEmbed } = require('../utils/foxcraft');
 
+const { t } = require('../utils/lang');
+
 function avatarEmbed(user, member) {
     const avatars = member?.displayAvatarURL?.({ size: 1024, dynamic: true })
         || user.displayAvatarURL({ size: 1024, dynamic: true });
@@ -10,12 +12,12 @@ function avatarEmbed(user, member) {
         ? user.displayAvatarURL({ size: 1024, extension: 'gif' })
         : staticUrl;
     return {
-        ...foxcraftEmbed(`🖼️ ${user.tag}`, 'Avatar səhifəsi'),
+        ...foxcraftEmbed(`${user.tag}`, 'Avatar page'),
         image: { url: avatars },
         color: 0x57F287,
         fields: [
-            { name: '🖼 PNG', value: `[Link](${staticUrl})`, inline: true },
-            { name: '🎞 GIF', value: `[Link](${gifUrl})`, inline: true },
+            { name: 'PNG', value: `[Link](${staticUrl})`, inline: true },
+            { name: 'GIF', value: `[Link](${gifUrl})`, inline: true },
         ],
         thumbnail: { url: user.displayAvatarURL({ size: 64 }) },
     };
@@ -30,12 +32,12 @@ async function resolveUser(client, guild, userId) {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('avatar')
-        .setDescription('İstifadəçinin avatarını göstərir')
-        .addUserOption((option) => option.setName('user').setDescription('Hədəf istifadəçi').setRequired(false)),
+        .setDescription('Shows a user avatar')
+        .addUserOption((option) => option.setName('user').setDescription('Target user').setRequired(false)),
     async execute(interaction) {
         const targetId = getOption(interaction, 'user') || interaction.user?.id || interaction.member?.user?.id;
         const target = await resolveUser(interaction.discordClient, await interaction.discordClient.guilds.fetch(interaction.guild_id), targetId);
-        if (!target?.user) return ephemeralReply('İstifadəçi tapılmadı.');
+        if (!target?.user) return ephemeralReply(t(interaction.guild_id, 'user_not_found'));
         return publicReply(null, [avatarEmbed(target.user, target.member)]);
     },
     async prefixExecute(message, args) {
@@ -46,7 +48,7 @@ module.exports = {
             member = message.guild.members.cache.get(raw) || await message.guild.members.fetch(raw).catch(() => null);
             user = member?.user || null;
             if (!user) user = await message.client.users.fetch(raw).catch(() => null);
-            if (!user) return message.reply('İstifadəçi tapılmadı.');
+            if (!user) return message.reply(t(message.guild?.id, 'user_not_found'));
         }
         return message.reply({ embeds: [avatarEmbed(user, member)] });
     },

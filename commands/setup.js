@@ -10,6 +10,8 @@ const path = require('path');
 const { ephemeralReply, publicReply } = require('../utils/interaction');
 const { envValue, foxcraftEmbed, isGuildOwnerOrAdmin } = require('../utils/foxcraft');
 
+const { t } = require('../utils/lang');
+
 const ROLE_DEFINITIONS = [
     ['Sahibi', 0xe74c3c], ['Qurucu', 0xf39c12], ['Developer', 0x3498db],
     ['Admin', 0xe74c3c], ['Moderator', 0x9b59b6], ['Test Moderator', 0xb48ead],
@@ -431,25 +433,25 @@ module.exports = {
     setupGuild,
     data: new SlashCommandBuilder()
         .setName('setup')
-        .setDescription('FoxCraft kanallarını, rollarını və panellərini qurur'),
+        .setDescription('Sets up the FoxCraft channels, roles and panels'),
     async execute(interaction) {
-        if (!interaction.guild_id) return ephemeralReply('Bu əmr yalnız serverdə istifadə oluna bilər.');
+        if (!interaction.guild_id) return ephemeralReply(t(interaction.guild_id, 'server_only'));
         let guild;
         try {
             guild = await interaction.discordClient.guilds.fetch(interaction.guild_id);
         } catch (error) {
             logFailure('Serveri yüklə', error);
-            return ephemeralReply('Server məlumatları alınmadı.');
+            return ephemeralReply(t(interaction.guild_id, 'guild_load_failed'));
         }
         if (!isGuildOwnerOrAdmin(interaction, await guild.fetch())) {
-            return ephemeralReply('Bu əmrdən yalnız server sahibi, administrator və ya OWNER_ID istifadə edə bilər.');
+            return ephemeralReply(t(interaction.guild_id, 'perm_owner_or_admin'));
         }
         const summary = await setupGuild(guild);
         return ephemeralReply(null, [foxcraftEmbed('FoxCraft setup', summary.join('\n'))]);
     },
     prefixExecute: async (message) => {
         if (!authorizedPrefixMessage(message)) {
-            return message.reply('Bu əmrdən yalnız server sahibi, administrator və ya OWNER_ID istifadə edə bilər.');
+            return message.reply(t(message.guild?.id, 'perm_owner_or_admin'));
         }
         const summary = await setupGuild(message.guild);
         return message.reply({ embeds: [foxcraftEmbed('FoxCraft setup', summary.join('\n'))] });

@@ -1,11 +1,12 @@
 /**
  * AFK system. Members set an AFK reason with /afk (or !afk). When they send
  * any message, AFK is cleared automatically. When someone mentions an AFK
- * user, the bot announces "X AFK-dır".
+ * user, the bot announces "X is AFK".
  */
 
 const { getModules, getAfk } = require('./db');
 const { deleteLater } = require('./foxcraft');
+const { t } = require('./lang');
 
 /**
  * Runs AFK checks for a message. Returns true when the message should not be
@@ -22,7 +23,7 @@ async function handleMessage(message) {
         if (self) {
             const { clearAfk } = require('./db');
             clearAfk(message.guild.id, message.author.id);
-            const notify = await message.reply(`${message.author} AFK-dan qayıtdı! 🎉`).catch(() => null);
+            const notify = await message.reply(t(message.guild?.id, 'afk_cleared', { user: `${message.author}` })).catch(() => null);
             deleteLater(notify, 5000);
             return false;
         }
@@ -39,9 +40,9 @@ async function handleMessage(message) {
     if (!afk) return false;
 
     const ago = Math.max(1, Math.round((Date.now() - afk.since) / 60000));
-    const part = afk.reason ? `Səbəb: *${afk.reason}*` : 'Səbəb göstərilməyib.';
+    const part = afk.reason ? `${t(message.guild?.id, 'afk_reason')}: *${afk.reason}*` : t(message.guild?.id, 'mod_no_reason');
     const mention = `<@${targetId}>`;
-    await message.channel.send(`${mention} AFK-dır (${ago} dəqiqədir). ${part}`)
+    await message.channel.send(t(message.guild?.id, 'afk_notice', { user: mention, minutes: ago, part }))
         .then((m) => deleteLater(m, 8000))
         .catch(() => {});
     return false;

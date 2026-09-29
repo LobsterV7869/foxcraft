@@ -1,17 +1,18 @@
 const fs = require('fs');
 const path = require('path');
+const { t } = require('./lang');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const FOXCRAFT_COLOR = 0xff6b35;
 const RULES = [
-    '1. Digər üzvlərə hörmətlə yanaş.',
-    '2. Spam və flood etmə.',
-    '3. Reklamı icazəsiz paylaşma.',
-    '4. Təhqir və ayrı-seçkiliyə yol vermə.',
-    '5. Botlardan düzgün istifadə et.',
-    '6. Serverdə bug və exploitlərdən sui-istifadə etmə.',
-    '7. Moderatorların qərarlarına hörmət et.',
-    '8. Minecraft serverinin qaydalarına əməl et.',
+    '1. Treat every member with respect.',
+    '2. No spam or flooding.',
+    '3. Do not post advertisements without permission.',
+    '4. No harassment, hate speech or discrimination.',
+    '5. Use bots correctly.',
+    '6. Do not exploit bugs or vulnerabilities.',
+    '7. Respect moderator decisions.',
+    '8. Follow the Minecraft server rules.',
 ].join('\n');
 
 function envValue(name, fallback = '') {
@@ -26,16 +27,19 @@ function foxcraftEmbed(title, description, fields = []) {
         color: FOXCRAFT_COLOR,
         fields,
         footer: {
-            text: 'FoxCraft | Azərbaycan Minecraft icması',
+            text: envValue('FOXCRAFT_FOOTER', 'FoxCraft | Minecraft Community Bot'),
             ...(envValue('FOXCRAFT_LOGO_URL') ? { icon_url: envValue('FOXCRAFT_LOGO_URL') } : {}),
         },
     };
 }
 
+/** Placeholder shown wherever the Minecraft IP or version has not been set yet. */
+const COMING_SOON = 'Coming soon';
+
 function getServerValues() {
     return {
-        ip: envValue('FOXCRAFT_SERVER_IP', 'Yaxında'),
-        version: envValue('FOXCRAFT_VERSION', 'Yaxında'),
+        ip: envValue('FOXCRAFT_SERVER_IP', COMING_SOON),
+        version: envValue('FOXCRAFT_VERSION', COMING_SOON),
     };
 }
 
@@ -134,7 +138,7 @@ function hasDiscordPermission(permissionString, permission) {
 }
 
 async function fetchMinecraftStatus(ip) {
-    if (ip === 'Yaxında') return null;
+    if (!ip || ip === 'Coming soon') return null;
     const response = await fetch(`https://api.mcsrvstat.us/3/${encodeURIComponent(ip)}`, {
         signal: AbortSignal.timeout(5000),
     });
@@ -144,26 +148,27 @@ async function fetchMinecraftStatus(ip) {
 
 function formatMinecraftStatus(status, version) {
     if (!status) {
-        return { title: 'FoxCraft server statusu', description: 'Status məlumatı Yaxında olacaq.' };
+        return { title: 'FoxCraft Server Status', description: 'Status information is coming soon.' };
     }
     if (!status.online) {
-        return { title: 'FoxCraft server statusu', description: 'Server hazırda oflayndır.' };
+        return { title: 'FoxCraft Server Status', description: 'The server is currently offline.' };
     }
     const players = status.players
-        ? `${status.players.online ?? 0}/${status.players.max ?? 'Yaxında'}`
-        : 'Yaxında';
+        ? `${status.players.online ?? 0}/${status.players.max ?? '?'}`
+        : '?';
     return {
-        title: 'FoxCraft server statusu',
-        description: 'Server onlayndır.',
+        title: 'FoxCraft Server Status',
+        description: 'The server is online.',
         fields: [
-            { name: 'Oyunçular', value: players, inline: true },
-            { name: 'Versiya', value: status.version || version, inline: true },
+            { name: t(guild.id, 'foxcraft_players'), value: players, inline: true },
+            { name: t(guild.id, 'foxcraft_version'), value: status.version || version, inline: true },
         ],
     };
 }
 
 module.exports = {
     FOXCRAFT_COLOR,
+    COMING_SOON,
     RULES,
     envValue,
     foxcraftEmbed,

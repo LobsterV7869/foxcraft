@@ -1,5 +1,5 @@
 /**
- * FoxCraft - Azərbaycan Minecraft Discord tətbiqi
+ * FoxCraft - Discord bot for the FoxCraft Minecraft community
  * 
  * ==============================================================================
  * ARCHITECTURE OVERVIEW: USER-INSTALLED APPS & HTTP WEBHOOK INTERACTIONS
@@ -58,6 +58,7 @@ const {
 } = require('discord.js');
 const { getGuildConfig, loadGuildConfig, setGuildConfig, configIsDurable } = require('./utils/config');
 const {
+    COMING_SOON,
     envValue,
     fetchMinecraftStatus,
     foxcraftEmbed,
@@ -71,6 +72,7 @@ const systems = require('./utils/systems');
 const cekilis = require('./utils/cekilis');
 const qeydiyyat = require('./utils/qeydiyyat');
 const ui = require('./utils/ui');
+const { t } = require('./utils/lang');
 const automodCommand = require('./commands/automod');
 
 // Initialize database connection on startup (MongoDB Atlas, with automatic fallback to SQLite / JSON)
@@ -85,6 +87,7 @@ const {
 } = require('discord-interactions');
 
 const { autocompleteContext } = require('./utils/interaction');
+const { loadCommands: prewarmHelpCommands } = require('./utils/helpdata');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -98,7 +101,7 @@ const hasValidPublicKey = publicKey && publicKey !== 'your_application_public_ke
 
 if (!hasValidPublicKey) {
     console.error('❌ CRITICAL ERROR: PUBLIC_KEY is missing in your .env file!');
-    console.error('👉 Discord Developer Portal -> FoxCraft tətbiqi -> General Information -> PUBLIC KEY bölməsindən götürün.');
+    console.error('Discord Developer Portal -> FoxCraft application -> General Information -> PUBLIC KEY field.');
     console.error('👉 Add it to your .env file: PUBLIC_KEY=your_key_here');
 }
 
@@ -116,7 +119,7 @@ async function findDeleteExecutor(guild, messageId, bulk = false) {
         });
         return entry?.executor || null;
     } catch (error) {
-        console.error('[FOXCRAFT LOG] Audit silinmə qeydi alınmadı:', {
+        console.error('[FOXCRAFT LOG] Audit delete entry not recorded:', {
             message: error.message,
             code: error.code ?? null,
             status: error.status ?? error.httpStatus ?? null,
@@ -138,6 +141,7 @@ if (fs.existsSync(commandsPath)) {
         const command = require(filePath);
         if ('data' in command && 'execute' in command) {
             commands.set(command.data.name, command);
+            for (const alias of command.aliases ?? []) commands.set(alias, command);
             console.log(`📦 Loaded slash command: /${command.data.name}`);
         } else {
             console.warn(`⚠️ Skipped invalid command file: ${file}`);
@@ -147,6 +151,12 @@ if (fs.existsSync(commandsPath)) {
 } else {
     console.warn('⚠️ No ./commands directory found.');
 }
+
+// The help menu builds its own index by re-requiring every command file, which
+// costs over a second on first use. Paying that here keeps /help and its
+// autocomplete inside Discord's 3s interaction budget.
+const helpCommandIndex = prewarmHelpCommands();
+console.log(`📚 Help index warmed: ${Object.keys(helpCommandIndex).length} commands.`);
 
 // Register button/select/modal handlers for the background systems.
 automodCommand.registerComponents();
@@ -171,13 +181,25 @@ const client = new Client({
     ],
 });
 
+// Node treats an unhandled rejection as fatal and kills the process. Every
+// gateway event handler here is async, so a single bad message (an expired
+// interaction, a deleted channel, a null cache entry) would otherwise take the
+// whole bot offline — and a restarting bot silently drops every interaction in
+// flight, which surfaces to users as "FoxCraft didn't respond in time".
+process.on('unhandledRejection', (reason) => {
+    console.error('[FOXCRAFT] Unhandled rejection (bot keeps running):', reason);
+});
+process.on('uncaughtException', (error) => {
+    console.error('[FOXCRAFT] Uncaught error (bot keeps running):', error);
+});
+
 client.once('ready', () => {
     client.user.setPresence({
         activities: [{ name: 'FoxCraft | Minecraft', type: ActivityType.Playing }],
         status: 'online',
     });
-    console.log(`[FOXCRAFT] Gateway hazırdır: ${client.user.tag} (Application ID: ${client.application?.id || client.user.id})`);
-    console.log('[FOXCRAFT] Mesaj oyunları üçün Message Content Intent tələb olunur; Developer Portal-da aktiv olmalıdır.');
+    console.log(`[FOXCRAFT] Gateway ready: ${client.user.tag} (Application ID: ${client.application?.id || client.user.id})`);
+    console.log('[FOXCRAFT] Message Content Intent is required for the message games; enable it in the Developer Portal.');
     updateStatusChannel();
     setInterval(updateStatusChannel, 5 * 60 * 1000).unref();
 });
@@ -186,22 +208,24 @@ async function updateStatusChannel() {
     const channelId = envValue('FOXCRAFT_STATUS_CHANNEL_ID');
     if (!channelId || !client.isReady()) return;
     const { ip } = getServerValues();
-    if (ip === 'Yaxında') return;
+    // getServerValues() falls back to this literal, so compare against it
+    // directly. Anything else would try to resolve "Coming soon" as a host.
+    if (!ip || ip === COMING_SOON) return;
     try {
         const status = await fetchMinecraftStatus(ip);
         const result = formatMinecraftStatus(status, getServerValues().version);
         const channel = await client.channels.fetch(channelId);
         if (!channel || typeof channel.setName !== 'function') {
-            console.error('[FOXCRAFT] Status kanalı adını dəyişmək mümkün deyil: kanal tapılmadı və ya uyğun tip deyil.');
+            console.error('[FOXCRAFT] Cannot rename the status channel: not found or wrong channel type.');
             return;
         }
         const label = status?.online
             ? `Online: ${status.players?.online ?? 0}/${status.players?.max ?? '?'}`
             : 'Offline';
-        await channel.setName(label.slice(0, 100), 'FoxCraft canlı server statusu');
-        console.log(`[FOXCRAFT] Status kanalı yeniləndi: ${result.description}`);
+        await channel.setName(label.slice(0, 100), 'FoxCraft live server status');
+        console.log(`[FOXCRAFT] Status channel updated: ${result.description}`);
     } catch (error) {
-        console.error('[FOXCRAFT] Status kanalı yenilənmədi:', error.message);
+        console.error('[FOXCRAFT] Status channel not updated:', error.message);
     }
 }
 
@@ -213,25 +237,25 @@ client.on('messageCreate', async (message) => {
     // Handle !profile <username>
     if (name?.toLowerCase() === 'profile') {
         const targetUser = args[0];
-        if (!targetUser) return message.reply('❌ Zəhmət olmasa istifadəçi adını daxil edin: `!profile <username>`');
+        if (!targetUser) return message.reply(t(message.guild?.id, 'profile_usage'));
 
         try {
             // Try to find the user in the guild by mention or name
             const member = message.guild.members.cache.find(m => m.user.username.toLowerCase() === targetUser.toLowerCase() || m.user.id === targetUser);
-            if (!member) return message.reply('❌ İstifadəçi tapılmadı.');
+            if (!member) return message.reply(t(message.guild?.id, 'user_not_found'));
 
             const embed = {
-                ...foxcraftEmbed('👤 İstifadəçi Profili', `**${member.user.username}** istifadəçisinin məlumatları`),
+                ...foxcraftEmbed(t(message.guild?.id, 'profile_title'), t(message.guild?.id, 'profile_of', { name: member.user.username })),
                 thumbnail: { url: member.user.displayAvatarURL({ dynamic: true, size: 512 }) },
                 fields: [
-                    { name: '🆔 ID', value: `\`${member.id}\``, inline: true },
-                    { name: '📅 Qoşulma Tarixi', value: `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>`, inline: true },
+                    { name: t(message.guild?.id, 'field_id'), value: `\`${member.id}\``, inline: true },
+                    { name: t(message.guild?.id, 'field_joined'), value: `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>`, inline: true },
                 ],
             };
             return message.reply({ embeds: [embed] });
         } catch (error) {
-            console.error('[FOXCRAFT] Profile xətası:', error);
-            return message.reply('❌ Profil məlumatları alınarkən xəta baş verdi.');
+            console.error('[FOXCRAFT] Profile error:', error);
+            return message.reply(t(message.guild?.id, 'profile_error'));
         }
     }
 
@@ -240,39 +264,40 @@ client.on('messageCreate', async (message) => {
     try {
         await command.prefixExecute(message, args);
     } catch (error) {
-        console.error(`[FOXCRAFT] !${name} əmri uğursuz oldu:`, {
+        console.error(`[FOXCRAFT] !${name} failed:`, {
             message: error?.message || String(error),
             code: error?.code ?? null,
             status: error?.status ?? error?.httpStatus ?? null,
             stack: error?.stack ?? null,
         });
-        await message.reply('Əmr icra edilərkən xəta baş verdi.').catch(() => {});
+        await message.reply(t(message.guild?.id, 'command_failed')).catch(() => {});
     }
 });
 
 client.on('guildMemberAdd', async (member) => {
-    console.log(`[FOXCRAFT] Yeni üzv hadisəsi alındı: ${member.user.tag} (${member.guild.name})`);
+    console.log(`[FOXCRAFT] New member event: ${member.user.tag} (${member.guild.name})`);
     try {
         const channels = await member.guild.channels.fetch();
-        const lobby = channels.find((channel) =>
-            channel?.name?.normalize('NFC').endsWith('lobi') &&
-            channel.isTextBased()
-        );
+        // Matches both the legacy "lobi" name and the English "lobby".
+        const lobby = channels.find((channel) => {
+            const name = channel?.name?.normalize('NFC')?.toLowerCase() ?? '';
+            return (name.endsWith('lobi') || name.endsWith('lobby')) && channel.isTextBased();
+        });
         if (!lobby) {
-            console.error('[FOXCRAFT] Xoş gəldin lobi kanalı tapılmadı. Gözlənilən ad: 👋・lobi');
+            console.error(`[FOXCRAFT] ${t(member.guild.id, 'welcome_channel_missing')}`);
         } else {
             await lobby.send({
-                content: `Salam ${member}, FoxCraft serverinə xoş gəldin!`,
+                content: t(member.guild.id, 'welcome_message', { user: `${member}` }),
                 allowedMentions: { users: [member.id] },
             });
-            console.log(`[FOXCRAFT] Xoş gəldin mesajı göndərildi: #${lobby.name}`);
+            console.log(`[FOXCRAFT] Welcome message sent: #${lobby.name}`);
         }
     } catch (error) {
-        console.error('[FOXCRAFT] Lobi xoş gəldin mesajı göndərilmədi:', {
+        console.error('[FOXCRAFT] Lobby welcome message not sent:', {
             message: error.message,
             code: error.code ?? null,
             status: error.status ?? error.httpStatus ?? null,
-            channel: '👋・lobi',
+            channel: 'lobby',
         });
     }
     await logger.onGuildMemberAdd(member);
@@ -280,35 +305,41 @@ client.on('guildMemberAdd', async (member) => {
 });
 
 client.on('messageCreate', async (message) => {
-    if (!message.guild || message.author.bot) return;
-    if (channelNameIs(message.channel, 'sayı-sayma') || channelNameIs(message.channel, 'söz-oyunu')) {
-        console.log(`[FOXCRAFT] Oyun mesajı alındı: kanal=${message.channel.name}, məzmun=${JSON.stringify(message.content)}`);
-    }
-    messageSnapshots.set(message.id, {
-        author: message.author.tag,
-        content: message.content.slice(0, 1500) || '[mətn yoxdur]',
-        channelId: message.channel.id,
-        channelName: message.channel.name,
-        createdAt: message.createdAt,
-    });
-    if (messageSnapshots.size > 5000) {
-        messageSnapshots.delete(messageSnapshots.keys().next().value);
-    }
+    // A throw in here becomes an unhandled rejection, which kills the whole
+    // process — and a dead process is why every in-flight interaction times out.
+    try {
+        if (!message.guild || message.author.bot) return;
+        if (channelNameIs(message.channel, 'sayı-sayma') || channelNameIs(message.channel, 'söz-oyunu')) {
+            console.log(`[FOXCRAFT] Game message received: channel=${message.channel.name}, content=${JSON.stringify(message.content)}`);
+        }
+        messageSnapshots.set(message.id, {
+            author: message.author.tag,
+            content: message.content.slice(0, 1500) || '[no text]',
+            channelId: message.channel.id,
+            channelName: message.channel.name,
+            createdAt: message.createdAt,
+        });
+        if (messageSnapshots.size > 5000) {
+            messageSnapshots.delete(messageSnapshots.keys().next().value);
+        }
 
-    // Background systems (automod, sayma on configured channels, AFK).
-    const consumedBySystems = await systems.handleMessage(message);
-    if (consumedBySystems) return;
+        // Background systems (automod, sayma on configured channels, AFK).
+        const consumedBySystems = await systems.handleMessage(message);
+        if (consumedBySystems) return;
 
-    if (await handleCounting(message) || await handleWordGame(message)) return;
-    await handleSuggestionReactions(message);
+        if (await handleCounting(message) || await handleWordGame(message)) return;
+        await handleSuggestionReactions(message);
 
-    const now = Date.now();
-    const recent = recentMessages.get(message.author.id) || [];
-    recent.push(now);
-    recentMessages.set(message.author.id, recent.filter((timestamp) => now - timestamp < 5000));
-    if (recentMessages.get(message.author.id).length >= 6) {
-        await auditLog(message.guild, 'Mümkün spam hücumu', `${message.author.tag} 5 saniyə ərzində çoxlu mesaj göndərdi.`, true);
-        recentMessages.set(message.author.id, []);
+        const now = Date.now();
+        const recent = recentMessages.get(message.author.id) || [];
+        recent.push(now);
+        recentMessages.set(message.author.id, recent.filter((timestamp) => now - timestamp < 5000));
+        if (recentMessages.get(message.author.id).length >= 6) {
+            await auditLog(message.guild, t(message.guild.id, 'spam_title'), t(message.guild.id, 'spam_detail', { user: message.author.tag }), true);
+            recentMessages.set(message.author.id, []);
+        }
+    } catch (error) {
+        console.error('[FOXCRAFT] Message handler error (message:', message.id, '):', error);
     }
 });
 
@@ -364,12 +395,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     { id: newState.guild.id, deny: ['ViewChannel', 'Connect'] },
                     { id: newState.member.id, allow: ['ViewChannel', 'Connect', 'Speak', 'Stream'] },
                 ],
-                reason: 'FoxCraft xüsusi səs otağı',
+                reason: 'FoxCraft custom voice room',
             });
             await newState.setChannel(room);
-            await auditLog(newState.guild, 'Xüsusi səs otağı yaradıldı', `${newState.member.user.tag} üçün ${room} yaradıldı.`);
+            await auditLog(newState.guild, 'Custom voice room created', `Created ${room} for ${newState.member.user.tag}.`);
         } catch (error) {
-            console.error('[FOXCRAFT LOG] Xüsusi səs otağı yaradıla bilmədi:', {
+            console.error('[FOXCRAFT LOG] Custom voice room could not be created:', {
                 message: error.message,
                 code: error.code ?? null,
                 status: error.status ?? error.httpStatus ?? null,
@@ -379,8 +410,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     if (oldState.channelId && oldState.channelId !== trigger?.id) {
         const oldChannel = oldState.guild?.channels.cache.get(oldState.channelId);
         if (oldChannel?.parent?.name === '🔒・Xüsusi otaqlar' && oldChannel.name.startsWith('🔒・') && oldChannel.members.size === 0) {
-            await oldChannel.delete('FoxCraft xüsusi səs otağı boş qaldı').catch((error) => {
-                console.error('[FOXCRAFT LOG] Boş xüsusi səs otağı silinmədi:', error.message);
+            await oldChannel.delete('FoxCraft custom voice room left empty').catch((error) => {
+                console.error('[FOXCRAFT LOG] Empty custom voice room not deleted:', error.message);
             });
         }
     }
@@ -423,7 +454,7 @@ if (!process.env.VERCEL) {
 
 if (process.env.DISCORD_TOKEN && !process.env.VERCEL) {
     client.login(process.env.DISCORD_TOKEN).catch((error) => {
-        console.error('[FOXCRAFT] Gateway giriş xətası:', error.message);
+        console.error('[FOXCRAFT] Gateway login error:', error.message);
     });
 }
 
@@ -448,7 +479,7 @@ async function auditLog(guild, title, description, critical = false) {
         content: mentions || undefined,
         embeds: [foxcraftEmbed(title, description)],
         allowedMentions: { roles: critical ? [...staffRoles.keys()] : [] },
-    }).catch((error) => console.error('[FOXCRAFT LOG] Audit mesajı göndərilmədi:', error.message));
+    }).catch((error) => console.error('[FOXCRAFT LOG] Audit message not sent:', error.message));
 }
 
 function getCheckEmoji(guild) {
@@ -464,7 +495,7 @@ async function addCheckReaction(message) {
         }
         await message.react(emoji);
     } catch (error) {
-        console.error('[FOXCRAFT LOG] Düzgün cavaba emoji əlavə edilmədi:', {
+        console.error('[FOXCRAFT LOG] Check reaction not added:', {
             message: error.message,
             code: error.code ?? null,
             status: error.status ?? error.httpStatus ?? null,
@@ -488,7 +519,7 @@ function channelNameIs(channel, expected) {
 
 async function handleCounting(message) {
     if (!channelNameIs(message.channel, 'sayı-sayma') || message.author.bot || message.content.startsWith(prefix)) return false;
-    const state = getGameState(message.guild.id, message.channel.id, 'counting', {
+    const state = await getGameState(message.guild.id, message.channel.id, 'counting', {
         expected: 1,
         lastUser: null,
         counts: {},
@@ -496,9 +527,9 @@ async function handleCounting(message) {
     });
     const today = new Date().toISOString().slice(0, 10);
     if (state.day !== today) {
-        const report = Object.entries(state.counts).map(([userId, count]) => `<@${userId}>: ${count}`).join('\n') || 'Bu gün heç kim saymayıb.';
-        const reportChannel = message.guild.channels.cache.find((channel) => channel.name === '📊・anketlər');
-        if (reportChannel) await reportChannel.send({ embeds: [foxcraftEmbed('Gündəlik sayma hesabatı', report)] });
+        const report = Object.entries(state.counts).map(([userId, count]) => `<@${userId}>: ${count}`).join('\n') || t(message.guild.id, 'counting_report_empty');
+        const reportChannel = message.guild.channels.cache.find((channel) => channel.name === '📊・anketlər' || channel.name === '📊・polls');
+        if (reportChannel) await reportChannel.send({ embeds: [foxcraftEmbed(t(message.guild.id, 'counting_report_title'), report)] });
         state.expected = 1;
         state.lastUser = null;
         state.counts = {};
@@ -507,8 +538,8 @@ async function handleCounting(message) {
     const number = Number(message.content.trim());
     const valid = Number.isInteger(number) && number === state.expected && message.author.id !== state.lastUser;
     if (!valid) {
-        await message.delete().catch((error) => logMessageDeleteFailure('Sayma mesajı silinmədi', error));
-        await message.channel.send('Növbəti düzgün rəqəm yazılmalıdır və eyni üzv ardıcıl yaza bilməz.')
+        await message.delete().catch((error) => logMessageDeleteFailure('Counting message not deleted', error));
+        await message.channel.send(t(message.guild.id, 'counting_warning'))
             .then((warning) => deleteLater(warning, 4000))
             .catch(() => {});
         return true;
@@ -528,7 +559,7 @@ async function handleSuggestionReactions(message) {
         await message.react('✅');
         await message.react('❌');
     } catch (error) {
-        console.error('[FOXCRAFT LOG] Təklif reaksiyaları əlavə edilmədi:', {
+        console.error('[FOXCRAFT LOG] Suggestion reactions not added:', {
             message: error.message,
             code: error.code ?? null,
             status: error.status ?? error.httpStatus ?? null,
@@ -538,19 +569,23 @@ async function handleSuggestionReactions(message) {
 
 async function handleWordGame(message) {
     if (!channelNameIs(message.channel, 'söz-oyunu') || message.author.bot || message.content.startsWith(prefix)) return false;
-    const word = message.content.trim().toLocaleLowerCase('az-AZ').split(/\s+/)[0];
-    const state = getGameState(message.guild.id, message.channel.id, 'word-game', {
+    // Plain toLowerCase so English and Azerbaijani words are both accepted;
+    // a Turkish/Azeri locale would lowercase "I" to a dotless "ı".
+    const word = message.content.trim().toLowerCase().split(/\s+/)[0];
+    const state = await getGameState(message.guild.id, message.channel.id, 'word-game', {
         lastWord: null,
         used: [],
         lastUser: null,
     });
     const firstLetter = state.lastWord ? [...state.lastWord].at(-1) : null;
+    // Accepts plain English letters plus the Azerbaijani ones (ə, ğ, ı, ö, ü, ç, ş)
+    // so the word chain keeps working in either language.
     const valid = /^[a-zəğıöüçş]+$/i.test(word) &&
         (!firstLetter || word.startsWith(firstLetter)) &&
         !state.used.includes(word) &&
         message.author.id !== state.lastUser;
     if (!valid) {
-        await message.delete().catch((error) => logMessageDeleteFailure('Söz oyunu mesajı silinmədi', error));
+        await message.delete().catch((error) => logMessageDeleteFailure('Word game message not deleted', error));
         return true;
     }
     state.lastWord = word;
@@ -567,20 +602,20 @@ async function generateTranscript(channel) {
     try {
         const messages = await channel.messages.fetch({ limit: 100 });
         let transcript = `==========================================================\n`;
-        transcript += `🎫 FOXCRAFT TICKET TRANSCRIPT\n`;
+        transcript += `FOXCRAFT TICKET TRANSCRIPT\n`;
         transcript += `Channel: #${channel.name}\n`;
-        transcript += `Date: ${new Date().toLocaleString('az-AZ')}\n`;
+        transcript += `Date: ${new Date().toLocaleString('en-GB')}\n`;
         transcript += `==========================================================\n\n`;
 
         const sorted = [...messages.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
         for (const msg of sorted) {
-            const time = msg.createdAt.toLocaleString('az-AZ', { hour: '2-digit', minute: '2-digit' });
+            const time = msg.createdAt.toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit' });
             const author = msg.author.tag;
-            const content = msg.content || (msg.attachments.size > 0 ? '[Fayl göndərildi]' : '[Boş mesaj]');
+            const content = msg.content || (msg.attachments.size > 0 ? '[File sent]' : '[Empty message]');
 
             transcript += `[${time}] ${author}: ${content}\n`;
             if (msg.attachments.size > 0) {
-                msg.attachments.forEach(a => transcript += `   📎 Fayl: ${a.url}\n`);
+                msg.attachments.forEach(a => transcript += `   File: ${a.url}\n`);
             }
             transcript += '----------------------------------------------------------\n';
         }
@@ -590,7 +625,7 @@ async function generateTranscript(channel) {
 
         return new AttachmentBuilder(Buffer.from(transcript), { name: `transcript-${channel.name}.txt` });
     } catch (error) {
-        console.error('[FOXCRAFT LOG] Transkript yaradıla bilmədi:', error);
+        console.error('[FOXCRAFT LOG] Transcript could not be created:', error);
         return null;
     }
 }
@@ -619,18 +654,18 @@ async function handleButton(interaction) {
                 { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
                 { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
             ],
-            reason: 'FoxCraft ticket yaradıldı',
+            reason: 'FoxCraft ticket created',
         });
         await channel.send({
             embeds: [{
-                ...foxcraftEmbed('🎫 AzeSpace Dəstək', `Salam ${interaction.user}. Problemini ətraflı izah et, tezliklə cavab verəcəyik.`),
+                ...foxcraftEmbed('AzeSpace Dəstək', `Salam ${interaction.user}. Problemini ətraflı izah et, tezliklə cavab verəcəyik.`),
                 fields: [
                     { name: 'Açan', value: `${interaction.user}`, inline: true },
-                    { name: 'Status', value: '🟢 Açıq', inline: true },
+                    { name: 'Status', value: 'Açıq', inline: true },
                 ],
             }],
             components: [new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('foxcraft:ticket-claim').setLabel('🤝 Öz üzərinə götür').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('foxcraft:ticket-claim').setLabel('Öz üzərinə götür').setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setCustomId('foxcraft:ticket-close').setLabel('Ticketi bağla').setStyle(ButtonStyle.Danger)
             )],
         });
@@ -651,8 +686,8 @@ async function handleButton(interaction) {
         await interaction.channel.send({ content: 'Bu ticket 5 saniyə ərzində silinəcək.' });
         setTimeout(() => {
             if (typeof interaction.channel?.delete !== 'function') return;
-            interaction.channel.delete('FoxCraft ticket bağlandı').catch((error) => {
-                console.error('[FOXCRAFT LOG] Ticket silinmədi:', error.message);
+            interaction.channel.delete('FoxCraft ticket closed').catch((error) => {
+                console.error('[FOXCRAFT LOG] Ticket not deleted:', error.message);
             });
         }, 5000).unref?.();
         return true;
@@ -669,10 +704,20 @@ async function handleButton(interaction) {
 }
 
 client.on('interactionCreate', async (interaction) => {
+    const startedAt = Date.now();
+    const logLatency = (label) => {
+        const ms = Date.now() - startedAt;
+        if (ms > 800) {
+            console.warn(`[LATENCY] ${label} took ${ms}ms (Discord cuts off at 3000ms) pid=${process.pid}`);
+        }
+    };
     try {
         // Route registered buttons/selects/modals (panel, cekilis, qeydiyyat,
         // help category, restart, automod) through the shared UI dispatcher.
-        if (await ui.handleGatewayInteraction(interaction, client)) return;
+        if (await ui.handleGatewayInteraction(interaction, client)) {
+            logLatency(`component ${interaction.customId}`);
+            return;
+        }
 
         // Autocomplete must always be answered, even when the command has no
         // suggestions — otherwise Discord shows "application did not respond".
@@ -680,11 +725,12 @@ client.on('interactionCreate', async (interaction) => {
             const command = commands.get(interaction.commandName);
             if (command?.autocomplete) {
                 await command.autocomplete(interaction).catch((error) => {
-                    console.error('[FOXCRAFT] Avtomatik tamamlama xətası:', error.message);
+                    console.error('[FOXCRAFT] Autocomplete error:', error.message);
                 });
             } else if (!interaction.responded) {
                 await interaction.respond([]).catch(() => {});
             }
+            logLatency(`autocomplete /${interaction.commandName}`);
             return;
         }
 
@@ -703,14 +749,15 @@ client.on('interactionCreate', async (interaction) => {
                     ephemeral: isEphemeral,
                 }).catch(() => {});
             }
+            logLatency(`command /${interaction.commandName}`);
             return;
         }
 
         if (interaction.isButton() && interaction.customId === 'foxcraft:confession') {
-            console.log(`[FOXCRAFT] Etiraf düyməsi basıldı: ${interaction.user.tag}`);
+            console.log(`[FOXCRAFT] Confession button pressed: ${interaction.user.tag}`);
             const modal = new ModalBuilder()
                 .setCustomId('foxcraft:confession-modal')
-                .setTitle('Anonim etiraf')
+                .setTitle('Anonim Etiraf')
                 .addComponents(new ActionRowBuilder().addComponents(
                     new TextInputBuilder()
                         .setCustomId('text')
@@ -724,18 +771,18 @@ client.on('interactionCreate', async (interaction) => {
         }
         if (await handleButton(interaction)) return;
         if (!interaction.isModalSubmit() || interaction.customId !== 'foxcraft:confession-modal') return;
-        console.log(`[FOXCRAFT] Etiraf modalı göndərildi: ${interaction.user.tag}`);
+        console.log(`[FOXCRAFT] Confession modal submitted: ${interaction.user.tag}`);
         await interaction.deferReply({ ephemeral: true });
         const channels = await interaction.guild.channels.fetch();
         const channel = channels.find((item) => item?.name === '🤫・etiraf' && item.isTextBased());
         if (!channel) throw new Error('🤫・etiraf kanalı tapılmadı');
         const content = interaction.fields.getTextInputValue('text').trim();
         if (!content) throw new Error('Etiraf mətni boşdur');
-        await channel.send({ embeds: [foxcraftEmbed('Anonim etiraf', content)] });
+        await channel.send({ embeds: [foxcraftEmbed('Anonim Etiraf', content)] });
         await auditLog(interaction.guild, 'Anonim etiraf göndərildi', `${interaction.user.tag} anonim etiraf panelindən istifadə etdi.`);
         await interaction.editReply({ content: 'Etirafın anonim şəkildə göndərildi.' });
     } catch (error) {
-        console.error('[FOXCRAFT LOG] Etiraf əməliyyatı uğursuz oldu:', {
+        console.error('[FOXCRAFT LOG] Confession failed:', {
             message: error.message,
             code: error.code ?? null,
             status: error.status ?? error.httpStatus ?? null,
@@ -745,7 +792,7 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.deferred || interaction.replied) {
             await interaction.editReply({ content: 'Etiraf göndərilmədi. Problem konsolda qeyd edildi.' }).catch(() => {});
         } else {
-            await interaction.reply({ content: 'Əməliyyat zamanı xəta baş verdi.', ephemeral: true }).catch(() => {});
+            await interaction.reply({ content: t(interaction.guild_id, 'unexpected_error'), ephemeral: true }).catch(() => {});
         }
     }
 });
@@ -779,7 +826,7 @@ setInterval(() => {
 app.get('/', (req, res) => {
     res.json({
         status: 'online',
-        app: 'FoxCraft Discord tətbiqi',
+        app: 'FoxCraft Discord bot',
         commandsLoaded: commands.size,
         interactionsEndpoint: '/interactions'
     });
@@ -811,10 +858,10 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
             const uiResponse = await ui.handleHttpInteraction(interaction, client);
             if (uiResponse) return res.json(uiResponse);
         } catch (error) {
-            console.error('[FOXCRAFT UI] HTTP interaksiya xətası:', error.message);
+            console.error('[FOXCRAFT UI] HTTP interaction error:', error.message);
             return res.json({
                 type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                data: { content: 'Əməliyyat zamanı xəta baş verdi.', flags: InteractionResponseFlags.EPHEMERAL },
+                data: { content: t(interaction.guild_id, 'unexpected_error'), flags: InteractionResponseFlags.EPHEMERAL },
             });
         }
     }
@@ -835,9 +882,11 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
 
             if (headerMessage) {
                 const embed = headerMessage.embeds[0];
+                // field 0 is the opener, field 1 the status. Read the opener from
+                // field 0 — reading field 1 would print the status as the name.
                 const finalFields = [
-                    { name: '👤 Açan', value: embed.fields?.[1]?.value || 'Naməlum', inline: true },
-                    { name: '🛠️ Öhdəsinə götürən', value: `${user}`, inline: true },
+                    { name: 'Açan', value: embed.fields?.[0]?.value || 'Naməlum', inline: true },
+                    { name: 'Öhdəsinə götürən', value: `${user}`, inline: true },
                 ];
 
                 await headerMessage.edit({ embeds: [{ ...embed, fields: finalFields }] });
@@ -861,7 +910,7 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
 
             if (logChannel && transcript) {
                 await logChannel.send({
-                    content: `🎫 **Ticket Bağlandı**\nKanal: #${channel.name}\nBağlayan: ${user}`,
+                    content: `**Ticket Bağlandı**\nKanal: #${channel.name}\nBağlayan: ${user}`,
                     files: [transcript]
                 });
             }
@@ -872,7 +921,7 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
             // 3. Delete channel after delay
             setTimeout(() => {
                 if (typeof channel?.delete !== 'function') return;
-                channel.delete('FoxCraft ticket bağlandı').catch(() => {});
+                channel.delete('FoxCraft ticket closed').catch(() => {});
             }, 5000).unref?.();
 
             return res.json({
@@ -882,7 +931,7 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
         }
 
         if (customId === 'foxcraft:ticket-create') {
-            console.log(`[FOXCRAFT] Ticket yarat düyməsi HTTP endpoint-ə çatdı: ${interaction.member?.user?.username || interaction.user?.username || 'naməlum'}`);
+            console.log(`[FOXCRAFT] Ticket create button reached the HTTP endpoint: ${interaction.member?.user?.username || interaction.user?.username || 'unknown'}`);
 
             const row = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
@@ -892,25 +941,21 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
                         {
                             label: 'Alış-veriş',
                             value: 'shopping',
-                            emoji: '🛒',
                             description: 'Alış-veriş və ödənişlərlə bağlı dəstək'
                         },
                         {
                             label: 'Minecraft Problemləri',
                             value: 'mc_problems',
-                            emoji: '🛠️',
                             description: 'Texniki problemlər və xətalar'
                         },
                         {
                             label: 'Şikayət/İrad',
                             value: 'complaints',
-                            emoji: '⚠️',
                             description: 'Şikayətlər və təkliflər'
                         },
                         {
                             label: 'Əməkdaşlıq',
                             value: 'partnership',
-                            emoji: '🤝',
                             description: 'Reklam və tərəfdaşlıq təklifləri'
                         },
                     ])
@@ -927,7 +972,7 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
         }
 
         if (customId === 'foxcraft:confession') {
-            console.log(`[FOXCRAFT] Etiraf düyməsi HTTP endpoint-ə çatdı: ${interaction.member?.user?.username || interaction.user?.username || 'naməlum'}`);
+            console.log(`[FOXCRAFT] Confession button reached the HTTP endpoint: ${interaction.member?.user?.username || interaction.user?.username || 'unknown'}`);
             return res.json({
                 type: InteractionResponseType.MODAL,
                 data: {
@@ -954,10 +999,10 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
         interaction.data?.custom_id === 'foxcraft:ticket-category') {
         const categoryValue = interaction.data.values[0];
         const categoryMap = {
-            shopping: { label: '🛒 Alış-veriş', desc: 'Ödənişlər və alış-veriş' },
-            mc_problems: { label: '🛠️ Minecraft Problemləri', desc: 'Texniki xətalar' },
-            complaints: { label: '⚠️ Şikayət/İrad', desc: 'Şikayət və təklif' },
-            partnership: { label: '🤝 Əməkdaşlıq', desc: 'Tərəfdaşlıq' }
+            shopping: { label: 'Alış-veriş', desc: 'Payments and buying' },
+            mc_problems: { label: 'Minecraft Issues', desc: 'Technical errors' },
+            complaints: { label: 'Complaints', desc: 'Complaints and suggestions' },
+            partnership: { label: 'Partnership', desc: 'Partnership' }
         };
         const selected = categoryMap[categoryValue];
         const user = interaction.member?.user || interaction.user;
@@ -966,7 +1011,7 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
         if (!selected) {
             return res.json({
                 type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                data: { content: 'Yanlış kateqoriya seçildi.', flags: InteractionResponseFlags.EPHEMERAL },
+                data: { content: 'Invalid category selected.', flags: InteractionResponseFlags.EPHEMERAL },
             });
         }
 
@@ -1006,11 +1051,13 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
                         { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
                         { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
                     ],
-                    reason: `Ticket created by ${user.tag}`
+                    reason: `Ticket yaradıldı: ${user.tag}`
                 });
 
                 // Tag Staff Roles - Using case-insensitive and trimmed search for better reliability
-                const staffRolesNames = ['Qurucu', 'Admin', 'Moderator', 'Rəhbər'];
+                // The Azeri names are the ones actually in use on the server, so they
+                // must stay. The English names are accepted as a fallback.
+                const staffRolesNames = ['Qurucu', 'Admin', 'Moderator', 'Rəhbər', 'Founder', 'Management'];
                 const roleIds = [];
                 const roles = await guild.roles.fetch();
 
@@ -1018,8 +1065,10 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
                     const role = roles.find(r => r.name.trim().toLowerCase() === roleName.toLowerCase());
                     if (role) {
                         roleIds.push(`<@&${role.id}>`);
-                    } else {
-                        console.warn(`[FOXCRAFT] Role tapılmadı: ${roleName}`);
+                    } else if (roleName === 'Qurucu' || roleName === 'Rəhbər') {
+                        // Only warn for the legacy Azeri names, never for the
+                        // optional English fallbacks.
+                        console.warn(`[FOXCRAFT] Role not found: ${roleName}`);
                     }
                 }
                 const staffMentions = roleIds.join(' ');
@@ -1027,15 +1076,15 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
                 const headerEmbed = {
                     ...foxcraftEmbed(selected.label, `Salam ${user}! Zəhmət olmasa probleminizi ətraflı izah edin.`),
                     fields: [
-                        { name: '🔵 Prioritet', value: 'Normal', inline: true },
-                        { name: '👤 Açan', value: `<@${user.id}>`, inline: true },
+                        { name: 'Prioritet', value: 'Normal', inline: true },
+                        { name: 'Açan', value: `<@${user.id}>`, inline: true },
                     ],
                     description: `Salam <@${user.id}>! Zəhmət olmasa probleminizi ətraflı izah edin.\n\nKomandamızdan biri tezliklə sizinlə əlaqə saxlayacaq.`
                 };
 
                 const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('foxcraft:ticket-claim').setLabel('Öhdəsinə götür').setEmoji('🙋‍♂️').setStyle(ButtonStyle.Primary),
-                    new ButtonBuilder().setCustomId('foxcraft:ticket-close').setLabel('Bağla').setEmoji('🔒').setStyle(ButtonStyle.Danger)
+                    new ButtonBuilder().setCustomId('foxcraft:ticket-claim').setLabel('Öhdəsinə götür').setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder().setCustomId('foxcraft:ticket-close').setLabel('Bağla').setStyle(ButtonStyle.Danger)
                 );
 
                 await channel.send({
@@ -1053,7 +1102,7 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
                 });
 
             } catch (error) {
-                console.error('[FOXCRAFT] Ticket yaratma xətası:', error);
+                console.error('[FOXCRAFT] Ticket creation error:', error);
             }
         })();
     }
@@ -1077,16 +1126,16 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
                 const channels = await guild.channels.fetch();
                 const channel = channels.find((item) => item?.name === '🤫・etiraf' && item.isTextBased());
                 if (!channel) throw new Error('🤫・etiraf kanalı tapılmadı');
-                await channel.send({ embeds: [foxcraftEmbed('Anonim etiraf', content)] });
+                await channel.send({ embeds: [foxcraftEmbed('Anonim Etiraf', content)] });
                 await auditLog(guild, 'Anonim etiraf göndərildi', `${user?.username || 'İstifadəçi'} anonim etiraf panelindən istifadə etdi.`);
-                console.log(`[FOXCRAFT] HTTP etiraf göndərildi: ${user?.username || 'naməlum'}`);
+                console.log(`[FOXCRAFT] HTTP confession sent: ${user?.username || 'unknown'}`);
                 await fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ content: 'Etirafın anonim şəkildə göndərildi.' }),
                 });
             } catch (error) {
-                console.error('[FOXCRAFT LOG] HTTP etiraf əməliyyatı uğursuz oldu:', {
+                console.error('[FOXCRAFT LOG] HTTP confession failed:', {
                     message: error.message,
                     code: error.code ?? null,
                     status: error.status ?? error.httpStatus ?? null,
@@ -1094,7 +1143,7 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
                 await fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: 'Etiraf göndərilmədi. Problem konsolda qeyd edildi.' }),
+                    body: JSON.stringify({ content: 'The confession was not sent. The problem was logged in the console.' }),
                 }).catch(() => {});
             }
         })();
@@ -1112,7 +1161,7 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
             const response = await command.autocomplete(autocompleteContext(interaction));
             return res.json(response);
         } catch (error) {
-            console.error('[FOXCRAFT] Avtomatik tamamlama xətası:', error.message);
+            console.error('[FOXCRAFT] Autocomplete error:', error.message);
             return res.json({ type: InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT, data: { choices: [] } });
         }
     }
@@ -1126,7 +1175,7 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
             return res.json({
                 type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                 data: {
-                    content: `Bu serverdə \`/${name}\` əmri tanınmır.`,
+                    content: `The command \`/${name}\` is not recognised on this server.`,
                     flags: InteractionResponseFlags.EPHEMERAL
                 }
             });
@@ -1140,7 +1189,7 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
             return res.json({
                 type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                 data: {
-                    content: 'Zəhmət olmasa, növbəti əmrdən əvvəl 3 saniyə gözlə.',
+                    content: 'Please wait 3 seconds before using the next command.',
                     flags: InteractionResponseFlags.EPHEMERAL
                 }
             });
@@ -1178,11 +1227,11 @@ app.post('/interactions', verifyKeyMiddleware(publicKey), async (req, res) => {
             }
             return;
         } catch (error) {
-            console.error(`[FOXCRAFT] /${name} əmri uğursuz oldu:`, error);
+            console.error(`[FOXCRAFT] /${name} failed:`, error);
             return res.json({
                 type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                 data: {
-                    content: 'Əmr icra edilərkən gözlənilməz xəta baş verdi.',
+                    content: t(interaction.guild_id, 'command_failed'),
                     flags: InteractionResponseFlags.EPHEMERAL
                 }
             });
@@ -1284,7 +1333,7 @@ app.post('/api/guilds/:guildId/messages', async (req, res) => {
                 inline: Boolean(field.inline),
             })) : [],
             footer: {
-                text: 'FoxCraft | Azərbaycan Minecraft icması',
+                text: 'FoxCraft | Minecraft community',
                 ...(envValue('FOXCRAFT_LOGO_URL') ? { icon_url: envValue('FOXCRAFT_LOGO_URL') } : {}),
             },
         }] : undefined,
@@ -1345,10 +1394,10 @@ let server = null;
 
 if (!process.env.VERCEL && hasValidPublicKey) {
     server = app.listen(PORT, () => {
-        console.log(`\n[FOXCRAFT] HTTP tətbiqi http://localhost:${PORT} ünvanında işləyir`);
+        console.log(`\n[FOXCRAFT] HTTP app is running on http://localhost:${PORT}`);
         console.log(`📡 Set your Discord Interactions Endpoint URL to: https://<your-domain>/interactions`);
-        console.log('[FOXCRAFT] İmza yoxlaması aktivdir (PUBLIC_KEY)');
-        console.log(`[FOXCRAFT] ${commands.size} slash əmri və ! prefix əmrləri yükləndi.\n`);
+        console.log('[FOXCRAFT] Request signature verification is enabled (PUBLIC_KEY)');
+        console.log(`[FOXCRAFT] ${commands.size} slash commands and ! prefix commands loaded.\n`);
     });
 }
 

@@ -2,19 +2,21 @@ const { SlashCommandBuilder, ChannelType } = require('discord.js');
 const { publicReply, ephemeralReply } = require('../utils/interaction');
 const { foxcraftEmbed } = require('../utils/foxcraft');
 
+const { t } = require('../utils/lang');
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('serverinfo')
-        .setDescription('Server haqqında ətraflı məlumat göstərir'),
+        .setDescription('Shows detailed information about the server'),
     async execute(interaction) {
         let guild;
         try {
             guild = interaction.guild || await interaction.discordClient.guilds.fetch(interaction.guild_id);
             await guild.fetch();
         } catch {
-            return ephemeralReply('Server məlumatları alınmadı.');
+            return ephemeralReply(t(interaction.guild_id, 'guild_load_failed'));
         }
-        if (!guild) return ephemeralReply('Bu əmr yalnız serverdə istifadə oluna bilər.');
+        if (!guild) return ephemeralReply(t(interaction.guild_id, 'server_only'));
 
         const channels = await guild.channels.fetch().catch(() => []);
         const channelList = [...channels.values()];
@@ -37,14 +39,14 @@ module.exports = {
             ...foxcraftEmbed(`🏠 ${guild.name}`, guild.description || 'Təsvir yoxdur'),
             thumbnail: guild.iconURL({ dynamic: true, size: 256 }),
             fields: [
-                { name: '🆔 Server ID', value: `\`${guild.id}\``, inline: true },
-                { name: '👑 Sahib', value: `<@${guild.ownerId}>`, inline: true },
-                { name: '📅 Yaradılma', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true },
-                { name: '👥 Üzvlər', value: `${humans} insan • ${bots} bot`, inline: true },
-                { name: '💬 Kanallar', value: `📝 ${textChannels.length} • 🎙️ ${voiceChannels.length} • 🗂️ ${categories.length}`, inline: true },
-                { name: '🎭 Rollar', value: String(roles.size), inline: true },
-                { name: '😀 Emojilər', value: String(emojis.size), inline: true },
-                { name: '🚀 Boost səviyyəsi', value: `${guild.premiumTier} (${boosts})`, inline: true },
+                { name: t(interaction.guild_id, 'serverinfo_id'), value: `\`${guild.id}\``, inline: true },
+                { name: t(interaction.guild_id, 'serverinfo_owner'), value: `<@${guild.ownerId}>`, inline: true },
+                { name: t(interaction.guild_id, 'serverinfo_created'), value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true },
+                { name: t(interaction.guild_id, 'serverinfo_members'), value: `${humans} insan • ${bots} bot`, inline: true },
+                { name: t(interaction.guild_id, 'serverinfo_channels'), value: `📝 ${textChannels.length} • 🎙️ ${voiceChannels.length} • 🗂️ ${categories.length}`, inline: true },
+                { name: t(interaction.guild_id, 'serverinfo_roles'), value: String(roles.size), inline: true },
+                { name: t(interaction.guild_id, 'serverinfo_emojis'), value: String(emojis.size), inline: true },
+                { name: t(interaction.guild_id, 'serverinfo_boost'), value: `${guild.premiumTier} (${boosts})`, inline: true },
             ],
         };
         return publicReply(null, [embed]);
@@ -59,13 +61,13 @@ module.exports = {
             ...foxcraftEmbed(`🏠 ${guild.name}`, guild.description || 'Təsvir yoxdur'),
             thumbnail: guild.iconURL({ dynamic: true, size: 256 }),
             fields: [
-                { name: '🆔 Server ID', value: `\`${guild.id}\``, inline: true },
-                { name: '👑 Sahib', value: `<@${guild.ownerId}>`, inline: true },
-                { name: '📅 Yaradılma', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true },
-                { name: '👥 Üzvlər', value: `${humans} insan • ${bots} bot`, inline: true },
-                { name: '💬 Kanallar', value: `📝 ${texts} • 🎙️ ${voices}`, inline: true },
-                { name: '🎭 Rollar', value: String(guild.roles.cache.size), inline: true },
-                { name: '😀 Emojilər', value: String(guild.emojis.cache.size), inline: true },
+                { name: t(message.guild?.id, 'serverinfo_id'), value: `\`${guild.id}\``, inline: true },
+                { name: t(message.guild?.id, 'serverinfo_owner'), value: `<@${guild.ownerId}>`, inline: true },
+                { name: t(message.guild?.id, 'serverinfo_created'), value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true },
+                { name: t(message.guild?.id, 'serverinfo_members'), value: `${humans} insan • ${bots} bot`, inline: true },
+                { name: t(message.guild?.id, 'serverinfo_channels'), value: `📝 ${texts} • 🎙️ ${voices}`, inline: true },
+                { name: t(message.guild?.id, 'serverinfo_roles'), value: String(guild.roles.cache.size), inline: true },
+                { name: t(message.guild?.id, 'serverinfo_emojis'), value: String(guild.emojis.cache.size), inline: true },
             ],
         };
         return message.reply({ embeds: [embed] });

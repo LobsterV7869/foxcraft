@@ -3,7 +3,7 @@ const { ephemeralReply, getStringOption, autocompleteContext } = require('../uti
 const { buildCategoryEmbed, buildSelect, commandDetail, resolveCategory, loadCommands, CATEGORIES } = require('../utils/helpdata');
 const { registerComponent, rows } = require('../utils/ui');
 
-const DEFAULT_CATEGORY = 'istifadeci';
+const DEFAULT_CATEGORY = 'user';
 
 function buildPayload(guildId, member, category = DEFAULT_CATEGORY) {
     return {
@@ -12,7 +12,7 @@ function buildPayload(guildId, member, category = DEFAULT_CATEGORY) {
     };
 }
 
-/** `!help <əmr>` for a single command, otherwise the category menu. */
+/** `!help <command>` for a single command, otherwise the category menu. */
 async function resolvePrefixReply(guildId, member, input) {
     const detail = input ? commandDetail(input, guildId, member) : null;
     if (detail) return { embeds: [detail], components: rows(buildSelect()) };
@@ -22,15 +22,15 @@ async function resolvePrefixReply(guildId, member, input) {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('help')
-        .setDescription('Bütün əmrlərin siyahısı və kömək menyusu')
+        .setDescription('Shows all commands and the help menu')
         .addStringOption((option) =>
             option
-                .setName('kateqoriya')
-                .setDescription('Kateqoriya və ya əmrin adı')
+                .setName('category')
+                .setDescription('Category name or command name')
                 .setAutocomplete(true),
         ),
     async execute(interaction) {
-        const input = getStringOption(interaction, 'kateqoriya');
+        const input = getStringOption(interaction, 'category') ?? getStringOption(interaction, 'kateqoriya');
         const member = interaction.member;
         const res = ephemeralReply(null, [buildCategoryEmbed(DEFAULT_CATEGORY, interaction.guild_id, member)]);
         if (input) {

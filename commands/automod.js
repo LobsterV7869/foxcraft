@@ -5,35 +5,39 @@ const { foxcraftEmbed } = require('../utils/foxcraft');
 const { registerComponent, button, select, rows } = require('../utils/ui');
 const { can } = require('../utils/moderation');
 const { PermissionFlagsBits } = require('discord.js');
+const { t } = require('../utils/lang');
 
 const FILTERS = [
-    { key: 'links', label: 'Keçidlər', emoji: '🔗' },
-    { key: 'invites', label: 'Dəvət linkləri', emoji: '📨' },
-    { key: 'caps', label: 'Böyük hərflər', emoji: '🔤' },
-    { key: 'spam', label: 'Spam/Flood', emoji: '🚫' },
-    { key: 'words', label: 'Qadağan sözlər', emoji: '🚷' },
+    { key: 'links', labelKey: 'automod_filter_links', emoji: '🔗' },
+    { key: 'invites', labelKey: 'automod_filter_invites', emoji: '📨' },
+    { key: 'caps', labelKey: 'automod_filter_caps', emoji: '🔤' },
+    { key: 'spam', labelKey: 'automod_filter_spam', emoji: '🚫' },
+    { key: 'words', labelKey: 'automod_banned_words', emoji: '🚷' },
 ];
 
 const ACTIONS = [
-    { key: 'delete', label: 'Mesajı sil', emoji: '🗑️' },
-    { key: 'warn', label: 'Xəbərdarlıq', emoji: '⚠️' },
-    { key: 'timeout', label: 'Zaman aşımı (10 dəq)', emoji: '⏱️' },
+    { key: 'delete', labelKey: 'automod_action_delete', emoji: '🗑️' },
+    { key: 'warn', labelKey: 'automod_action_warn', emoji: '⚠️' },
+    { key: 'timeout', labelKey: 'automod_action_timeout', emoji: '⏱️' },
 ];
 
-function statusEmbed(modules, cfg) {
+function statusEmbed(modules, cfg, guildId) {
     const lines = FILTERS.map((f) => {
         const on = cfg[f.key] === true;
-        return `${on ? '✅' : '❌'} **${f.label}**`;
+        return `${on ? '✅' : '❌'} **${t(guildId, f.labelKey)}**`;
     });
-    const action = ACTIONS.find((a) => a.key === cfg.action)?.label || cfg.action;
+    const actionLabel = ACTIONS.find((a) => a.key === cfg.action)?.labelKey;
+    const action = actionLabel ? t(guildId, actionLabel) : cfg.action;
+    const none = t(guildId, 'automod_none');
     return foxcraftEmbed(
-        '🛡️ Automod',
-        `Status: **${modules.automod?.enabled ? '✅ Aktiv' : '❌ Deaktiv'}**\n\n${lines.join('\n')}\n\n` +
-        `**Hərəkət:** ${action}`,
+        t(guildId, 'automod_title'),
+        t(guildId, 'automod_status_line', { status: modules.automod?.enabled ? t(guildId, 'automod_enabled') : t(guildId, 'automod_disabled') })
+            + `\n\n${lines.join('\n')}\n\n`
+            + t(guildId, 'automod_action_line', { action }),
         [
-            { name: 'Qadağan sözlər', value: cfg.bannedWords?.length ? cfg.bannedWords.join(', ') : 'Yoxdur', inline: true },
-            { name: 'İstisna rollar', value: cfg.whitelistRoles?.length ? cfg.whitelistRoles.map((r) => `<@&${r}>`).join(' ') : 'Yoxdur', inline: true },
-            { name: 'İstisna kanallar', value: cfg.whitelistChannels?.length ? cfg.whitelistChannels.map((c) => `<#${c}>`).join(' ') : 'Yoxdur', inline: true },
+            { name: t(guildId, 'automod_banned_words'), value: cfg.bannedWords?.length ? cfg.bannedWords.join(', ') : none, inline: true },
+            { name: t(guildId, 'automod_exempt_roles'), value: cfg.whitelistRoles?.length ? cfg.whitelistRoles.map((r) => `<@&${r}>`).join(' ') : none, inline: true },
+            { name: t(guildId, 'automod_exempt_channels'), value: cfg.whitelistChannels?.length ? cfg.whitelistChannels.map((c) => `<#${c}>`).join(' ') : none, inline: true },
         ]
     );
 }
@@ -41,15 +45,15 @@ function statusEmbed(modules, cfg) {
 function buildComponents(guildId) {
     const cfg = getModules(guildId).automod;
     return rows(
-        select('foxcraft:automod-toggle', 'Süzgəcləri seç', FILTERS.map((f) => ({
-            label: f.label, value: f.key, emoji: f.emoji,
-            description: cfg[f.key] === true ? 'Aktiv — söndürmək üçün seçimi qaldır' : 'Deaktiv — aktivləşdirmək üçün seç',
+        select('foxcraft:automod-toggle', t(guildId, 'automod_select_filters'), FILTERS.map((f) => ({
+            label: t(guildId, f.labelKey), value: f.key, emoji: f.emoji,
+            description: t(guildId, cfg[f.key] === true ? 'automod_desc_on' : 'automod_desc_off'),
             default: cfg[f.key] === true,
         })), 0, FILTERS.length),
-        select('foxcraft:automod-action', 'Hərəkəti seç', ACTIONS.map((a) => ({
-            label: a.label, value: a.key, emoji: a.emoji, default: a.key === cfg.action,
+        select('foxcraft:automod-action', t(guildId, 'automod_select_action'), ACTIONS.map((a) => ({
+            label: t(guildId, a.labelKey), value: a.key, emoji: a.emoji, default: a.key === cfg.action,
         })), 1, 1),
-        [button('foxcraft:automod-module', getModules(guildId).automod?.enabled ? 'Deaktiv et' : 'Aktiv et', getModules(guildId).automod?.enabled ? 4 : 3, getModules(guildId).automod?.enabled ? '❌' : '✅')],
+        [button('foxcraft:automod-module', t(guildId, getModules(guildId).automod?.enabled ? 'automod_disable' : 'automod_enable'), getModules(guildId).automod?.enabled ? 4 : 3, getModules(guildId).automod?.enabled ? '❌' : '✅')],
     );
 }
 
@@ -64,14 +68,14 @@ function requirePerm(ctx) {
 
 async function applyConfig(ctx, fn) {
     if (!requirePerm(ctx)) {
-        await ctx.reply({ content: 'Bu əməliyyat üçün Manage Guild icazəsi lazımdır.', ephemeral: true });
+        await ctx.reply({ content: t(ctx.guildId, 'automod_perm'), ephemeral: true });
         return;
     }
     const modules = getModules(ctx.guildId);
     modules.automod = { ...modules.automod, ...fn(modules.automod || {}) };
     setModules(ctx.guildId, modules);
     await ctx.update({
-        embeds: [statusEmbed(modules, modules.automod)],
+        embeds: [statusEmbed(modules, modules.automod, ctx.guildId)],
         components: buildComponents(ctx.guildId),
     });
 }
@@ -94,16 +98,16 @@ function registerComponents() {
 }
 
 module.exports = {
-    data: new SlashCommandBuilder().setName('automod').setDescription('Automod süzgəclərini idarə edir'),
+    data: new SlashCommandBuilder().setName('automod').setDescription('Manages the automod filters'),
     async execute(interaction) {
         const modules = getModules(interaction.guild_id);
-        const base = publicReply(null, [statusEmbed(modules, modules.automod)]);
+        const base = publicReply(null, [statusEmbed(modules, modules.automod, interaction.guild_id)]);
         base.data.components = buildComponents(interaction.guild_id);
         return base;
     },
     async prefixExecute(message) {
         const modules = getModules(message.guild.id);
-        return message.reply({ embeds: [statusEmbed(modules, modules.automod)], components: buildComponents(message.guild.id) });
+        return message.reply({ embeds: [statusEmbed(modules, modules.automod, message.guild.id)], components: buildComponents(message.guild.id) });
     },
     statusEmbed,
     buildComponents,

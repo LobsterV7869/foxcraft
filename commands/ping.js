@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { publicReply } = require('../utils/interaction');
+const { t } = require('../utils/lang');
 
 function snowflakeTimestamp(id) {
     try {
@@ -9,23 +10,28 @@ function snowflakeTimestamp(id) {
     }
 }
 
-function pingText(client, interactionId, startedAt) {
+function pingText(client, interactionId, startedAt, guildId) {
     const apiLatency = snowflakeTimestamp(interactionId);
     const apiMs = apiLatency ? Math.max(0, startedAt - apiLatency) : null;
-    const gatewayMs = Number.isFinite(client?.ws?.ping) && client.ws.ping >= 0
+    const pending = t(guildId, 'ping_pending');
+    const gateway = Number.isFinite(client?.ws?.ping) && client.ws.ping >= 0
         ? `${client.ws.ping} ms`
-        : 'Yaxında';
-    return `🏓 **Bot Gecikməsi:** \`${Math.max(0, Date.now() - startedAt)} ms\`\n🌐 **Discord API:** \`${apiMs === null ? 'Yaxında' : `${apiMs} ms`}\`\n⚡ **Gateway:** \`${gatewayMs}\``;
+        : pending;
+    return [
+        `${t(guildId, 'ping_line_bot')}: \`${Math.max(0, Date.now() - startedAt)} ms\``,
+        `${t(guildId, 'ping_line_api')}: \`${apiMs === null ? pending : `${apiMs} ms`}\``,
+        `${t(guildId, 'ping_line_gateway')}: \`${gateway}\``,
+    ].join('\n');
 }
 
 module.exports = {
-    data: new SlashCommandBuilder().setName('ping').setDescription('Bot və Discord gecikməsini göstərir'),
+    data: new SlashCommandBuilder().setName('ping').setDescription('Shows the bot and Discord latency'),
     async execute(interaction) {
         const startedAt = Date.now();
-        return publicReply(pingText(interaction.discordClient, interaction.id, startedAt));
+        return publicReply(pingText(interaction.discordClient, interaction.id, startedAt, interaction.guild_id));
     },
     prefixExecute: async (message) => {
         const startedAt = Date.now();
-        return message.reply(pingText(message.client, message.id, startedAt));
+        return message.reply(pingText(message.client, message.id, startedAt, message.guild?.id));
     },
 };

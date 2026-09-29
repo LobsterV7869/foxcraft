@@ -19,6 +19,9 @@ const MOD_COLORS = {
     slowmode: 0x95A5A6,
     warn: 0xF1C40F,
     timeout: 0xF1C40F,
+    move: 0x3498DB,
+    softban: 0xED4245,
+    purge: 0x95A5A6,
 };
 
 function isModLogEnabled(guildId) {
@@ -35,13 +38,12 @@ async function logModAction(guild, action, description) {
         if (!isModLogEnabled(guild.id)) return;
         const channel = await logger.getLogChannel(guild);
         if (!channel || !channel.isTextBased()) return;
-        const emojiMap = { ban: '🔨', unban: '🔓', kick: '👢', mute: '🔇', unmute: '🔊', lock: '🔒', unlock: '🔓', sil: '🧹', slowmode: '🐢', warn: '⚠️', timeout: '⏱️' };
-        const title = `${emojiMap[action] || '🛡️'} ${action.toUpperCase()}`;
+        const title = action.toUpperCase();
         await channel.send({
             embeds: [foxcraftEmbed(title, description)],
         }).catch(() => {});
     } catch (error) {
-        console.error('[MODLOG] Loq göndərilmədi:', error.message);
+        console.error('[MODLOG] Log could not be sent:', error.message);
     }
 }
 

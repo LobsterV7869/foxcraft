@@ -1,13 +1,12 @@
 /**
- * Sayma (counting) system for channels configured via /sayma or the panel.
+ * Counting system for channels configured via /counting or the panel.
  * Users must count 1, 2, 3 ... in order and the same user cannot write twice
  * in a row. A wrong number keeps the current count and deletes the message.
+ * Valid counts get a plain green check (✅) reaction.
  */
 
 const { getModules, getGuildData, updateGuildData } = require('./db');
 const { deleteLater } = require('./foxcraft');
-
-const CHECK_EMOJI_NAME = 'foxcraft_check';
 
 function stateKey(member) {
     return `${member}-state`;
@@ -54,7 +53,7 @@ async function handleMessage(message) {
 
     if (!valid) {
         await message.delete().catch(() => {});
-        const warning = await message.channel.send('Növbəti düzgün rəqəm yazılmalıdır və eyni üzv ardıcıl yaza bilməz.')
+        const warning = await message.channel.send('The next message must be the correct number, and the same member cannot count twice in a row.')
             .catch(() => null);
         deleteLater(warning, 4000);
         return true;
@@ -70,12 +69,7 @@ async function handleMessage(message) {
 
 async function addCheckReaction(message) {
     try {
-        let emoji = message.guild?.emojis?.cache?.find((e) => e.name === CHECK_EMOJI_NAME) || '✅';
-        if (emoji === '✅') {
-            const emojis = await message.guild.emojis.fetch();
-            emoji = emojis.find((e) => e.name === CHECK_EMOJI_NAME) || '✅';
-        }
-        await message.react(emoji);
+        await message.react('✅');
     } catch {
         /* reaction failed, non-fatal */
     }

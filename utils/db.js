@@ -42,6 +42,18 @@ db.exec(`
         winners_list  TEXT DEFAULT '[]',
         ended         INTEGER DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS warnings (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id   TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        moderator  TEXT,
+        reason     TEXT,
+        created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_warnings_member
+        ON warnings (guild_id, user_id);
 `);
 
 const DEFAULT_MODULES = {
@@ -65,8 +77,8 @@ const DEFAULT_MODULES = {
         enabled: false,
         channel: '',
         leaveChannel: '',
-        message: 'Salam {user}, {server} serverinə xoş gəldin! İndi {membercount} üzvük.',
-        leaveMessage: '{username} serveri tərk etdi.',
+        message: 'Welcome {user} to {server}! We are now {membercount} members.',
+        leaveMessage: '{username} left the server.',
         autoRole: '',
         dm: false,
     },
@@ -85,7 +97,7 @@ const DEFAULT_MODULES = {
         enabled: false,
         channel: '',
         role: '',
-        message: 'Aşağıdakı düyməyə basaraq qeydiyyatdan keç.',
+        message: 'Click the button below to register.',
     },
     afk: {
         enabled: true,
@@ -118,7 +130,7 @@ function getGuildData(guildId) {
         const parsed = JSON.parse(row.settings);
         return parsed && typeof parsed === 'object' ? parsed : {};
     } catch (error) {
-        console.error('[DB] Settings oxunmadı:', error.message);
+        console.error('[DB] Settings not read:', error.message);
         return {};
     }
 }
@@ -136,7 +148,7 @@ function updateGuildData(guildId, patch) {
             ON CONFLICT(guild_id) DO UPDATE SET settings = excluded.settings, updated_at = CURRENT_TIMESTAMP
         `).run(String(guildId), JSON.stringify(next));
     } catch (error) {
-        console.error('[DB] Settings yazılmadı:', error.message);
+        console.error('[DB] Settings not written:', error.message);
     }
     return next;
 }
@@ -250,6 +262,45 @@ function addGiveawayEntrant(messageId, userId) {
     return { ok: true, entrants: g.entrants.length };
 }
 
+// ---- Warnings ----------------------------------------------------------------
+
+function addWarning(guildId, userId, moderator, reason) {
+    const result = db.prepare(`
+        INSERT INTO warnings (guild_id, user_id, moderator, reason, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    `).run(String(guildId), String(userId), String(moderator || ''), String(reason || ''), Date.now());
+    return Number(result.lastInsertRowid);
+}
+
+function getWarnings(guildId, userId) {
+    // id is the tiebreaker: warnings issued in the same millisecond otherwise
+    // come back in an arbitrary order, so the id a moderator picks from
+    // /warnings may not be the one they think it is.
+    return db.prepare('SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC, id DESC')
+        .all(String(guildId), String(userId));
+}
+
+function countWarnings(guildId, userId) {
+    const row = db.prepare('SELECT COUNT(*) AS total FROM warnings WHERE guild_id = ? AND user_id = ?')
+        .get(String(guildId), String(userId));
+    return Number(row?.total || 0);
+}
+
+/**
+ * Removes one warning by id. Scoped to both the guild AND the member: ids are
+ * global, so without the user check `removeWarning @alice 7` would happily
+ * delete bob's warning while reporting it as alice's.
+ */
+function removeWarning(guildId, userId, warningId) {
+    return db.prepare('DELETE FROM warnings WHERE id = ? AND guild_id = ? AND user_id = ?')
+        .run(Number(warningId), String(guildId), String(userId)).changes > 0;
+}
+
+function clearWarnings(guildId, userId) {
+    return db.prepare('DELETE FROM warnings WHERE guild_id = ? AND user_id = ?')
+        .run(String(guildId), String(userId)).changes;
+}
+
 function safeJson(value, fallback = []) {
     try {
         const parsed = JSON.parse(value);
@@ -274,4 +325,9 @@ module.exports = {
     listActiveGiveaways,
     updateGiveaway,
     addGiveawayEntrant,
+    addWarning,
+    getWarnings,
+    countWarnings,
+    removeWarning,
+    clearWarnings,
 };

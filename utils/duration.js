@@ -34,24 +34,24 @@ function parseDuration(input) {
 }
 
 /**
- * Formats a millisecond value into a human readable Azerbaijani duration.
- * e.g. "1 saat 30 dəqiqə".
+ * Formats a millisecond value into a human readable English duration.
+ * e.g. "1 hour 30 minutes".
  */
 function formatDuration(ms) {
-    if (!Number.isFinite(ms) || ms <= 0) return 'dərhal';
+    if (!Number.isFinite(ms) || ms <= 0) return 'immediately';
 
     const units = [
-        { ms: UNIT_MS.d, az: 'gün', azSingular: 'gün' },
-        { ms: UNIT_MS.h, az: 'saat', azSingular: 'saat' },
-        { ms: UNIT_MS.m, az: 'dəqiqə', azSingular: 'dəqiqə' },
-        { ms: UNIT_MS.s, az: 'saniyə', azSingular: 'saniyə' },
+        { ms: UNIT_MS.d, unit: 'day', unitSingular: 'day' },
+        { ms: UNIT_MS.h, unit: 'hour', unitSingular: 'hour' },
+        { ms: UNIT_MS.m, unit: 'minute', unitSingular: 'minute' },
+        { ms: UNIT_MS.s, unit: 'second', unitSingular: 'second' },
     ];
     const parts = [];
     let remaining = ms;
     for (const unit of units) {
         const count = Math.floor(remaining / unit.ms);
         if (count > 0) {
-            parts.push(`${count} ${count === 1 ? unit.azSingular : unit.az}`);
+            parts.push(`${count} ${count === 1 ? unit.unitSingular : unit.unit}`);
             remaining -= count * unit.ms;
         }
     }

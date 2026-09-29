@@ -8,7 +8,7 @@ const { getModules } = require('./db');
 function fillPlaceholders(text, member) {
     return String(text == null ? '' : text)
         .replaceAll('{user}', `<@${member.id}>`)
-        .replaceAll('{username}', member.user?.username || member.displayName || member.userTag || member.user?.tag || 'Üzv')
+        .replaceAll('{username}', member.user?.username || member.displayName || member.userTag || member.user?.tag || 'Member')
         .replaceAll('{server}', member.guild?.name || 'Server')
         .replaceAll('{membercount}', String(member.guild?.memberCount ?? member.guild?.approximateMemberCount ?? '?'));
 }
@@ -27,7 +27,7 @@ async function onMemberAdd(member) {
             const role = member.guild.roles.cache.get(config.autoRole)
                 || await member.guild.roles.fetch(config.autoRole).catch(() => null);
             if (role) {
-                const added = await member.roles.add(role, 'Welcomer avto-rol')
+                const added = await member.roles.add(role, 'Welcomer auto-role')
                     .then(() => true)
                     .catch(() => false);
                 if (added) acted = true;

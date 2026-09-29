@@ -3,12 +3,13 @@
  */
 
 const { InteractionResponseType, InteractionResponseFlags } = require('discord-interactions');
+const { t } = require('./lang');
 
 /**
  * Extracts the user object from an interaction (handles both Guild and DM/Group DM contexts).
  */
 function getUser(interaction) {
-    return interaction.user || interaction.member?.user || { id: 'unknown', username: 'Unknown User' };
+    return interaction.user || interaction.member?.user || { id: 'unknown', username: t(interaction.guild_id, 'unknown_user') };
 }
 
 /**

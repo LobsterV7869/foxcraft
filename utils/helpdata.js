@@ -1,38 +1,39 @@
 /**
- * Help menu data. Builds the Azerbaijani help embed per category, hides
- * commands the user lacks permission for, and annotates system commands with
- * live ✅/❌ module status from SQLite settings.
+ * Help menu data. Builds the English help embed per category, hides commands
+ * the user lacks permission for, and annotates system commands with live
+ * Enabled/Disabled module status from SQLite settings.
  */
 
 const fs = require('fs');
 const path = require('path');
 const { getModules } = require('./db');
 const { foxcraftEmbed, envValue } = require('./foxcraft');
-const { select, emojiName } = require('./ui');
+const { select } = require('./ui');
+const { t } = require('./lang');
 
 const COMMANDS_DIR = path.join(__dirname, '..', 'commands');
 
 const CATEGORIES = [
-    { id: 'istifadeci', label: '👤 İstifadəçi', title: 'İstifadəçi', hint: 'Profil, server və şəxsi əmrlər' },
-    { id: 'moderasiya', label: '🛡️ Moderasiya', title: 'Moderasiya', hint: 'Cəza, idarəetmə və avtomatik qaydalar' },
-    { id: 'bot', label: '🤖 Bot', title: 'Bot', hint: 'Kömək, panel və bot əmrləri' },
-    { id: 'sistemler', label: '⚙️ Sistemlər', title: 'Sistemlər', hint: 'Sayma, çekiliş, welcomer və ticket' },
+    { id: 'user', labelKey: 'help_cat_user', hintKey: 'help_hint_user' },
+    { id: 'moderation', labelKey: 'help_cat_moderation', hintKey: 'help_hint_moderation' },
+    { id: 'bot', labelKey: 'help_cat_bot', hintKey: 'help_hint_bot' },
+    { id: 'systems', labelKey: 'help_cat_systems', hintKey: 'help_hint_systems' },
 ];
 
 const CATEGORY_ALIASES = {
-    istifadeci: 'istifadeci', user: 'istifadeci', users: 'istifadeci', istifadeci_əmrləri: 'istifadeci',
-    moderasiya: 'moderasiya', mod: 'moderasiya', mods: 'moderasiya', moderation: 'moderasiya',
+    user: 'user', users: 'user', istifadeci: 'user', istifadeci_əmrləri: 'user',
+    moderation: 'moderation', moderasiya: 'moderation', mod: 'moderation', mods: 'moderation',
     bot: 'bot', bots: 'bot',
-    sistemler: 'sistemler', sistem: 'sistemler', sistemlər: 'sistemler', systems: 'sistemler', sistemler_əmrləri: 'sistemler',
+    systems: 'systems', sistemler: 'systems', sistem: 'systems', sistemlər: 'systems', sistemler_əmrləri: 'systems',
 };
 
 const MODULE_KEY = {
     automod: 'automod',
-    sayma: 'sayma',
-    cekilis: 'cekilis',
+    counting: 'sayma',
+    giveaway: 'cekilis',
     welcomer: 'welcomer',
     'ticket-setup': 'ticket',
-    qeydiyyat: 'qeydiyyat',
+    register: 'qeydiyyat',
     afk: 'afk',
     setlog: 'modlog',
     logstatus: 'modlog',
@@ -40,20 +41,25 @@ const MODULE_KEY = {
 
 const COMMAND_CATEGORY = {
     // User
-    avatar: 'istifadeci', afk: 'istifadeci', qrkod: 'istifadeci',
-    serverinfo: 'istifadeci', userinfo: 'istifadeci', whoami: 'istifadeci', link: 'istifadeci',
+    avatar: 'user', afk: 'user', qrkod: 'user', nickname: 'user',
+    serverinfo: 'user', userinfo: 'user', whoami: 'user', link: 'user',
     // Moderation
-    ban: 'moderasiya', unban: 'moderasiya', kick: 'moderasiya', mute: 'moderasiya',
-    unmute: 'moderasiya', lock: 'moderasiya', unlock: 'moderasiya', sil: 'moderasiya',
-    slowmode: 'moderasiya', automod: 'moderasiya', sunucukur: 'moderasiya',
-    setlog: 'moderasiya', logstatus: 'moderasiya',
+    ban: 'moderation', unban: 'moderation', kick: 'moderation', mute: 'moderation',
+    unmute: 'moderation', lock: 'moderation', unlock: 'moderation', clear: 'moderation',
+    slowmode: 'moderation', automod: 'moderation', addrole: 'moderation', removerole: 'moderation',
+    setlog: 'moderation', logstatus: 'moderation',
+    warn: 'moderation', warnings: 'moderation', removewarn: 'moderation',
+    timeout: 'moderation', untimeout: 'moderation', softban: 'moderation', move: 'moderation',
     // Bot
     help: 'bot', panel: 'bot', ping: 'bot', restart: 'bot',
-    setup: 'bot', 'foxcraft-info': 'bot', foxcraft: 'bot',
+    setup: 'bot', foxcraft: 'bot', servericon: 'bot', 'foxcraft-info': 'bot', lang: 'bot',
+    // Voice
+    play: 'bot', join: 'bot', skip: 'bot', stop: 'bot', queue: 'bot',
+    volume: 'bot', loop: 'bot', replay: 'bot', nowplaying: 'bot',
     // Systems
-    sayma: 'sistemler', cekilis: 'sistemler', welcomer: 'sistemler',
-    'ticket-setup': 'sistemler', qeydiyyat: 'sistemler',
-    status: 'sistemler', rules: 'sistemler', server: 'sistemler',
+    sayma: 'systems', cekilis: 'systems', welcomer: 'systems',
+    'ticket-setup': 'systems', qeydiyyat: 'systems',
+    status: 'systems', rules: 'systems', server: 'systems', sunucukur: 'systems', ip: 'systems',
 };
 
 let cachedCommands = null;
@@ -78,7 +84,7 @@ function loadCommands() {
             const signature = [command.data.name, ...subcommands, ...args].join(' ');
             map[command.data.name] = {
                 name: command.data.name,
-                description: command.data.description || 'Təsvir yoxdur',
+                description: command.data.description || 'No description',
                 permission: command.data.default_member_permissions || null,
                 category: COMMAND_CATEGORY[command.data.name] || null,
                 subcommands,
@@ -138,41 +144,40 @@ function buildCategoryEmbed(categoryId, guildId, member) {
 
     const lines = visible.map((c) => {
         const status = moduleStatus(guildId, c.name);
-        const badge = status === null ? '' : status ? ' ✅' : ' ❌';
-        return `\`/${c.name}\`${badge} — ${c.description}`;
+        const badge = status === null ? '' : status ? t(guildId, 'help_badge_enabled') : t(guildId, 'help_badge_disabled');
+        return `\`/${c.name}\`${badge} - ${c.description}`;
     });
 
     const hidden = inCategory.length - visible.length;
     const prefix = envValue('PREFIX', '!');
     const parts = [
-        lines.length ? lines.join('\n') : '_Bu kateqoriyada sənə açıq olan əmr yoxdur._',
+        lines.length ? lines.join('\n') : t(guildId, 'help_no_commands'),
     ];
-    if (hidden > 0) parts.push(`> ${hidden} əmr sənin icazənə görə yoxdur.`);
-    parts.push(`**${visible.length}/${inCategory.length}** əmr göstərilir • Əmr haqqında: \`${prefix}help <əmr>\``);
+    if (hidden > 0) parts.push(t(guildId, 'help_hidden_count', { count: hidden }));
+    parts.push(t(guildId, 'help_shown_count', { shown: visible.length, total: inCategory.length, prefix }));
     const description = parts.join('\n\n').slice(0, 4096);
 
-    return foxcraftEmbed(`📖 Kömək — ${category.title}`, description, [
-        { name: '✅ / ❌', value: 'Sistem əmrlərində modulun aktiv və ya söndürülmüş vəziyyəti.', inline: true },
-        { name: '🎛️ Menyular', value: 'Aşağıdakı menyudan kateqoriya dəyiş, idarəetmə üçün `/panel` istifadə et.', inline: true },
+    return foxcraftEmbed(t(guildId, 'help_embed_title', { title: t(guildId, category.labelKey) }), description, [
+        { name: t(guildId, 'help_field_status_name'), value: t(guildId, 'help_field_status_value'), inline: true },
+        { name: t(guildId, 'help_field_menus_name'), value: t(guildId, 'help_field_menus_value'), inline: true },
     ]);
 }
 
 function buildSelect() {
     return select(
         'foxcraft:help-cat',
-        '📚 Kateqoriya seç',
+        t(null, 'help_select_placeholder'),
         CATEGORIES.map((c) => ({
-            label: c.label,
+            label: t(null, c.labelKey),
             value: c.id,
-            emoji: emojiName(c.label),
-            description: c.hint.slice(0, 100),
+            description: t(null, c.hintKey).slice(0, 100),
         })),
         1, 1,
     );
 }
 
 /**
- * Detail embed for a single command (used by `!help <əmr>`).
+ * Detail embed for a single command (used by `!help <command>`).
  * Returns null when the command does not exist or is hidden from the member.
  */
 function commandDetail(name, guildId, member) {
@@ -186,23 +191,23 @@ function commandDetail(name, guildId, member) {
     const category = CATEGORIES.find((c) => c.id === command.category);
     const optionLines = command.options
         .filter((o) => o.type !== 1 && o.type !== 2)
-        .map((o) => `• \`<${o.name}>\` — ${o.description || 'təsvir yoxdur'}${o.required ? ' *(vacib)*' : ''}`);
+        .map((o) => t(guildId, 'help_param_line', { name: o.name, desc: o.description ? `- ${o.description}` : `- ${t(guildId, 'help_no_description')}`, required: o.required ? t(guildId, 'help_required') : '' }));
     const subLines = command.subcommands.map((sub) => {
         const detail = command.options.find((o) => o.name === sub);
-        return `• \`${command.name} ${sub}\` — ${detail?.description || 'təsvir yoxdur'}`;
+        return t(guildId, 'help_sub_line', { name: command.name, sub, desc: detail?.description ? `- ${detail.description}` : `- ${t(guildId, 'help_no_description')}` });
     });
 
     const description = [
         command.description,
-        status === null ? null : `\n**Modul:** ${status ? '✅ Aktiv' : '❌ Söndürülmüş'}`,
-        optionLines.length ? `\n**Parametrlər**\n${optionLines.join('\n')}` : null,
-        subLines.length ? `\n**Alt əmrlər**\n${subLines.join('\n')}` : null,
+        status === null ? null : `\n${t(guildId, 'help_module_line', { status: status ? t(guildId, 'help_status_enabled') : t(guildId, 'help_status_disabled') })}`,
+        optionLines.length ? `\n${t(guildId, 'help_parameters')}\n${optionLines.join('\n')}` : null,
+        subLines.length ? `\n${t(guildId, 'help_subcommands')}\n${subLines.join('\n')}` : null,
     ].filter(Boolean).join('\n').slice(0, 4096);
 
-    return foxcraftEmbed(`📖 /${command.name}`, description, [
-        { name: 'İstifadə', value: `\`/${command.signature}\``, inline: false },
-        ...(command.hasPrefix ? [{ name: 'Prefix', value: `\`${envValue('PREFIX', '!')}${command.signature}\``, inline: true }] : []),
-        { name: 'Kateqoriya', value: category ? category.label : 'Digər', inline: true },
+    return foxcraftEmbed(`/${command.name}`, description, [
+        { name: t(guildId, 'help_usage'), value: `\`/${command.signature}\``, inline: false },
+        ...(command.hasPrefix ? [{ name: t(guildId, 'help_prefix'), value: `\`${envValue('PREFIX', '!')}${command.signature}\``, inline: true }] : []),
+        { name: t(guildId, 'help_category'), value: category ? t(guildId, category.labelKey) : t(guildId, 'help_category_other'), inline: true },
     ]);
 }
 

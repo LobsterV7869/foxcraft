@@ -1,7 +1,7 @@
 const DEFAULT_CONFIG = {
   overview: {
     prefix: '!',
-    language: 'az',
+    language: 'en',
     timezone: 'UTC',
   },
   setup: {
@@ -17,11 +17,11 @@ const DEFAULT_CONFIG = {
     security: true,
   },
   server: {
-    language: 'az',
+    language: 'en',
     welcome: {
       enabled: false,
       channel: '',
-      message: 'FoxCraft serverinə xoş gəlmisən, {user}!',
+      message: 'Welcome to the FoxCraft server, {user}!',
     },
     autoRole: {
       enabled: false,
@@ -45,7 +45,7 @@ const DEFAULT_CONFIG = {
     xpRate: 1.0,
     cooldown: 60,
     levelUpChannel: 'current',
-    levelUpMessage: '{user}, {level} səviyyəsinə yüksəldin!',
+    levelUpMessage: '{user}, you reached level {level}!',
     roles: [],
   },
   security: {
@@ -86,20 +86,34 @@ const DEFAULT_CONFIG = {
 // It is seeded on startup and refreshed on read, but MongoDB is the source of
 // truth: anything relying on the cache alone silently loses every saved change
 // the moment the process restarts.
-const mongoose = require('mongoose');
+// Mongoose is required lazily — it costs ~1s to load and is dead weight when
+// MONGO_URI is unset, which is the difference between making and missing
+// Discord's 3s interaction budget on a cold serverless start.
+let mongo = null;
 
-const GuildConfigSchema = new mongoose.Schema({
-    guildId: { type: String, required: true, unique: true },
-    config: { type: mongoose.Schema.Types.Mixed, default: {} },
-    updatedAt: { type: Date, default: Date.now }
-});
-
-const GuildConfig = mongoose.models.GuildConfig || mongoose.model('GuildConfig', GuildConfigSchema);
+function mongoModel() {
+    if (mongo) return mongo;
+    if (!process.env.MONGO_URI) return null;
+    const mongoose = require('mongoose');
+    const GuildConfigSchema = new mongoose.Schema({
+        guildId: { type: String, required: true, unique: true },
+        config: { type: mongoose.Schema.Types.Mixed, default: {} },
+        updatedAt: { type: Date, default: Date.now }
+    });
+    mongo = {
+        connection: mongoose.connection,
+        GuildConfig: mongoose.models.GuildConfig || mongoose.model('GuildConfig', GuildConfigSchema),
+    };
+    return mongo;
+}
 
 const guildConfigs = new Map();
 
 function mongoReady() {
-    return mongoose.connection?.readyState === 1;
+    // mongoModel() primes the lazy module, so it has to be called *before*
+    // reading the connection state. Checking `mongo` first would always report
+    // "not ready" and silently downgrade every guild config to the local store.
+    return mongoModel()?.connection?.readyState === 1;
 }
 
 /**
@@ -152,7 +166,7 @@ async function loadGuildConfig(guildId) {
     if (!mongoReady()) return getGuildConfig(guildId);
 
     try {
-        const row = await GuildConfig.findOne({ guildId }).lean();
+        const row = await mongoModel().GuildConfig.findOne({ guildId }).lean();
         const config = withDefaults(row?.config);
         guildConfigs.set(guildId, config);
         return structuredClone(config);
@@ -171,7 +185,7 @@ async function setGuildConfig(guildId, patch) {
     if (!guildId || !patch || typeof patch !== 'object' || Array.isArray(patch)) return null;
 
     const current = mongoReady()
-        ? (await GuildConfig.findOne({ guildId }).lean())?.config || {}
+        ? (await mongoModel().GuildConfig.findOne({ guildId }).lean())?.config || {}
         : guildConfigs.get(guildId) || {};
     const merged = withDefaults(current);
 
@@ -187,7 +201,7 @@ async function setGuildConfig(guildId, patch) {
 
     if (mongoReady()) {
         try {
-            await GuildConfig.findOneAndUpdate(
+            await mongoModel().GuildConfig.findOneAndUpdate(
                 { guildId },
                 { config: next, updatedAt: new Date() },
                 { upsert: true, setDefaultsOnInsert: true }

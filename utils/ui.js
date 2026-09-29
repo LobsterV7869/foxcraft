@@ -12,6 +12,7 @@ const {
 } = require('discord.js');
 
 const { InteractionResponseType, InteractionResponseFlags } = require('discord-interactions');
+const { t } = require('./lang');
 
 const registry = [];
 
@@ -227,9 +228,9 @@ async function dispatch(ctx) {
     try {
         await entry.handler(ctx);
     } catch (error) {
-        console.error(`[UI] ${ctx.customId} idarə olunarkən xəta:`, error.message);
+        console.error(`[UI] ${ctx.customId} failed while handling:`, error.message);
         try {
-            await ctx.reply({ content: 'Bu əməliyyat icra edilərkən xəta baş verdi.', ephemeral: true });
+            await ctx.reply({ content: t(ctx.guildId, 'something_went_wrong'), ephemeral: true });
         } catch {
             /* best effort */
         }

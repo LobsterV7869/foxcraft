@@ -1,5 +1,7 @@
 const { PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
 const { ephemeralReply } = require('../utils/interaction');
+
+const { t } = require('../utils/lang');
 const {
     discordRequest,
     envValue,
@@ -139,16 +141,16 @@ module.exports = {
         .setName('foxcraft')
         .setDescription('Bu serveri FoxCraft olaraq rebrend edir'),
     async execute(interaction) {
-        if (!interaction.guild_id) return ephemeralReply('FoxCraft yalnız serverdə istifadə oluna bilər.');
+        if (!interaction.guild_id) return ephemeralReply(t(interaction.guild_id, 'foxcraft_server_only'));
         let guild;
         try {
             guild = await discordRequest('GET', `/guilds/${interaction.guild_id}?with_counts=false`);
         } catch (error) {
             console.error('[FOXCRAFT] Server məlumatı alınmadı:', error.message);
-            return ephemeralReply('FoxCraft server məlumatları yoxlanılmadı. Botun serverə girişini və icazələrini yoxla.');
+            return ephemeralReply(t(interaction.guild_id, 'foxcraft_not_checked'));
         }
         if (!isGuildOwnerOrAdmin(interaction, guild)) {
-            return ephemeralReply('Bu əmrdən yalnız server sahibi, administrator və ya OWNER_ID istifadə edə bilər.');
+            return ephemeralReply(t(interaction.guild_id, 'perm_owner_or_admin'));
         }
         const summary = await rebrand(interaction);
         return ephemeralReply(null, [foxcraftEmbed('FoxCraft', `Rebrand nəticəsi:\n${summary.join('\n')}`)]);

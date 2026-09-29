@@ -75,39 +75,39 @@ async function handleMessage(message, client) {
     const text = message.content || '';
     let reason = null;
 
-    if (config.links && countLinks(text) > 0) reason = 'Keçid paylaşma qadağandır (link filtresi).';
-    else if (config.invites && findInvite(text)) reason = `Server dəvət linki paylaşmaq qadağandır (${findInvite(text)}).`;
-    else if (config.caps && isMostlyCaps(text, config)) reason = 'Böyük hərflərlə yazmaq qadağandır (caps filtresi).';
-    else if (config.spam && isFlooding(message.guild.id, message.channel?.id, message.author.id, config)) reason = 'Spam/flood aşkarlandı.';
-    else if (config.words && hasBannedWord(text, config)) reason = 'Qadağan edilmiş sözdən istifadə olundu.';
+    if (config.links && countLinks(text) > 0) reason = 'Posting links is not allowed (link filter).';
+    else if (config.invites && findInvite(text)) reason = `Posting server invite links is not allowed (${findInvite(text)}).`;
+    else if (config.caps && isMostlyCaps(text, config)) reason = 'Writing in all caps is not allowed (caps filter).';
+    else if (config.spam && isFlooding(message.guild.id, message.channel?.id, message.author.id, config)) reason = 'Spam/flood detected.';
+    else if (config.words && hasBannedWord(text, config)) reason = 'A blocked word was used.';
 
     if (!reason) return false;
     if (isWhitelisted(message.member, message.channel, config)) return false;
 
     const tag = message.author.tag;
-    const emoji = {
-        delete: '🗑️',
-        warn: '⚠️',
-        timeout: '⏱️',
-    }[config.action] || '🗑️';
+    const actionLabel = {
+        delete: 'Message deleted',
+        warn: 'Warning issued',
+        timeout: 'Member timed out',
+    }[config.action] || 'Message deleted';
 
     if (config.action === 'delete') {
         await message.delete().catch(() => {});
-        await message.channel.send(`${emoji} ${tag}: ${reason}`)
+        await message.channel.send(`**${actionLabel}** - ${tag}: ${reason}`)
             .then((m) => deleteLater(m, 5000))
             .catch(() => {});
     } else if (config.action === 'warn') {
         try {
-            await message.member?.send(`⚠️ **Hesabat:** ${reason}\nKanal: ${message.channel}\n\nBot qaydalarına əməl et.`).catch(() => {});
+            await message.member?.send(`**Warning:** ${reason}\nChannel: ${message.channel}\n\nPlease follow the server rules.`).catch(() => {});
         } catch {
             /* DM closed */
         }
-        await message.channel.send(`${emoji} ${tag}: ${reason}`)
+        await message.channel.send(`**${actionLabel}** - ${tag}: ${reason}`)
             .then((m) => deleteLater(m, 8000))
             .catch(() => {});
     } else if (config.action === 'timeout') {
         await message.member?.timeout(10 * 60 * 1000, reason).catch(() => {});
-        await message.channel.send(`${emoji} ${tag}, 10 dəqiqəlik səssizləşdirildin: ${reason}`).catch(() => {});
+        await message.channel.send(`**Member timed out** - ${tag} was timed out for 10 minutes: ${reason}`).catch(() => {});
     }
     return true;
 }

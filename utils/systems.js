@@ -21,17 +21,17 @@ async function handleMessage(message) {
     try {
         if (await sayma.handleMessage(message)) consumed = true;
     } catch (error) {
-        console.error('[SYSTEMS] Sayma xətası:', error.message);
+        console.error('[SYSTEMS] Counting error:', error.message);
     }
     try {
         await automod.handleMessage(message);
     } catch (error) {
-        console.error('[SYSTEMS] Automod xətası:', error.message);
+        console.error('[SYSTEMS] Automod error:', error.message);
     }
     try {
         await afk.handleMessage(message);
     } catch (error) {
-        console.error('[SYSTEMS] AFK xətası:', error.message);
+        console.error('[SYSTEMS] AFK error:', error.message);
     }
     return consumed;
 }
@@ -40,7 +40,7 @@ async function onMemberAdd(member) {
     try {
         await welcomer.onMemberAdd(member);
     } catch (error) {
-        console.error('[SYSTEMS] Welcomer xətası:', error.message);
+        console.error('[SYSTEMS] Welcomer error:', error.message);
     }
 }
 
@@ -48,7 +48,7 @@ async function onMemberRemove(member) {
     try {
         await welcomer.onMemberRemove(member);
     } catch (error) {
-        console.error('[SYSTEMS] Çıxış welcomer xətası:', error.message);
+        console.error('[SYSTEMS] Leave welcomer error:', error.message);
     }
 }
 
