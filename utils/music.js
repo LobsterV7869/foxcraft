@@ -2,8 +2,12 @@
  * Voice music player.
  *
  * One queue per guild, built on @discordjs/voice. Audio comes from YouTube via
- * @distube/ytdl-core, which transcodes through FFmpeg — so FFmpeg must be
- * installed on the host alongside the opus encoder (see scripts/ensure-opus.js).
+ * @distube/ytdl-core, which hands back a raw webm/opus stream that @discordjs/voice
+ * demuxes in pure JS, so no FFmpeg binary is required on the host.
+ *
+ * Encoding does need the native @discordjs/opus module. prism-media resolves it
+ * lazily when the first packet is encoded, so a missing encoder only breaks
+ * playback — never boot.
  *
  * Every public function is defensive about missing permissions and unreachable
  * streams: a music failure must never bubble up into a gateway event handler.
@@ -204,10 +208,18 @@ function startResource(state, track) {
             done(false);
         });
 
-        const resource = createAudioResource(stream, {
-            inlineVolume: true,
-            volume: state.volume / 100,
-        });
+        let resource;
+        try {
+            resource = createAudioResource(stream, {
+                inlineVolume: true,
+                volume: state.volume / 100,
+            });
+        } catch (error) {
+            console.error('[MUSIC] Encoder unavailable:', error.message);
+            stream.destroy();
+            done(false);
+            return;
+        }
 
         state.current = track;
         state.player.play(resource);

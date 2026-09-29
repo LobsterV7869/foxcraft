@@ -1,0 +1,19 @@
+# Nixpacks build configuration (Railway).
+#
+# Why these flags exist:
+# @discordjs/opus only publishes prebuilt binaries up to glibc 2.35, and
+# node-pre-gyp selects an asset by *exact* libc version. This build image is
+# glibc 2.41, so the download 404s and node-gyp falls back to compiling the
+# bundled libopus sources. GCC 14+ promotes -Wincompatible-pointer-types from a
+# warning to a hard error, which kills the build in
+# silk/fixed/autocorr_FIX.c and takes the whole `npm install` down with it.
+#
+# Downgrading the diagnostic to a warning lets that compile succeed. The
+# prebuilt binaries themselves are forward-compatible (a glibc 2.35 build loads
+# fine on newer glibc) — it is only the exact-match lookup that fails.
+#
+# If a future base image ever ships a matching prebuild, these are harmless.
+
+[variables]
+CFLAGS = "-Wno-incompatible-pointer-types -Wno-stringop-overread"
+CXXFLAGS = "-Wno-incompatible-pointer-types -Wno-stringop-overread"
