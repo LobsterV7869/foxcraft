@@ -7,15 +7,13 @@
   "scripts": {
     "start": "node index.js",
     "deploy": "node deploy-commands.js",
-    "setup:opus": "node scripts/ensure-opus.js",
-    "postinstall": "node scripts/ensure-opus.js",
     "test": "node scripts/selftest.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "dependencies": {
-    "@discordjs/opus": "^0.9.0",
+    "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.2",
     "@distube/ytdl-core": "^4.16.12",
     "better-sqlite3": "^13.0.3",

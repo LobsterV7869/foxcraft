@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "steps": {
+    "install": {
+      "variables": {
+        "CFLAGS": "-Wno-incompatible-pointer-types -Wno-stringop-overread",
+        "CXXFLAGS": "-Wno-incompatible-pointer-types -Wno-stringop-overread"
+      }
+    }
+  }
+}
